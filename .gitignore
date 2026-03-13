@@ -1,0 +1,81 @@
+# ============================================
+# Python Artifacts
+# ============================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Distribution / packaging
+build/
+dist/
+downloads/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ============================================
+# Virtual Environments
+# ============================================
+venv/
+env/
+ENV/
+
+# ============================================
+# Environment Variables & Secrets
+# ============================================
+.env
+*.env
+
+# ============================================
+# IDE & Editors
+# ============================================
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ============================================
+# Project Artifacts (Nested & Root)
+# ============================================
+# Models & Checkpoints
+backend/checkpoints/
+backend/models/*
+*.ckpt
+!backend/models/tft_delhi_v1.ckpt
+
+# Data & Logs
+backend/data/*
+!backend/data/training_data.parquet
+!backend/data/todays_forecast.json
+research_and_tools/logs/
+
+# Temporary & Research Files
+research_and_tools/temp/
+research_and_tools/scraping/
+research_and_tools/context/
+*.tmp
+temp_*/
+
+# Cache Files
+.cache.sqlite
+*.sqlite
+*.db
+
+# Generated Outputs
+*.log
+train_log.txt
+evaluation_results.txt
+
+# ============================================
+# Testing & Coverage
+# ============================================
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
