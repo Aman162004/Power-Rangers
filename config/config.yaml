@@ -1,0 +1,29 @@
+data:
+  raw_path: "data/raw/electricity_demand.csv"
+  processed_path: "data/processed/"
+  models_path: "models/"
+
+pipeline:
+  encoder_window: 24  # 6 hours * 4
+  decoder_window: 192   # 48 hours prediction
+  stride: 1
+
+features:
+  lags: [4, 24, 96]  # 1h, 6h, 24h
+  rolling_windows: [4, 24]  # 1h, 6h
+
+model:
+  hidden_size: 64
+  attention_head_size: 4
+  dropout: 0.1
+  hidden_continuous_size: 8
+  output_size: 1  # For point predictions, or 3 for quantiles
+  loss: "quantile"  # or "mae"
+  quantiles: [0.1, 0.5, 0.9]
+  learning_rate: 0.001
+  max_epochs: 50
+  batch_size: 32
+
+training:
+  early_stopping_patience: 10
+  checkpoint_every: 5

@@ -1,0 +1,10 @@
+pandas==2.0.0
+numpy==1.24.0
+torch==2.0.0
+pyarrow==12.0.0
+pyyaml==6.0
+pytorch-lightning==2.0.0
+pytorch-forecasting==1.0.0
+streamlit==1.28.0
+plotly==5.17.0
+matplotlib==3.8.0
