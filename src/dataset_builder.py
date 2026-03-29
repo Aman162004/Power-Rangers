@@ -3,6 +3,7 @@ import torch
 from torch.utils.data import Dataset
 import numpy as np
 from typing import Tuple
+from pytorch_forecasting import TimeSeriesDataSet
 
 class TimeSeriesDataset(Dataset):
     def __init__(self, data: pd.DataFrame, encoder_window: int, decoder_window: int, stride: int = 1):
@@ -51,14 +52,26 @@ class DatasetBuilder:
         df = df.fillna(method='ffill')
         return df
 
-    def build_datasets(self, df: pd.DataFrame) -> Tuple[TimeSeriesDataset, TimeSeriesDataset, TimeSeriesDataset]:
-        """Build train, val, test datasets."""
+    def build_datasets(self, df: pd.DataFrame) -> Tuple[TimeSeriesDataSet, TimeSeriesDataSet, TimeSeriesDataSet]:
+        """Build train, val, test datasets using pytorch_forecasting."""
         # Apply feature engineering
         df_featured = self.feature_engineer.engineer_features(df)
         # Drop NaN from lags and rolling
         df_featured = df_featured.dropna().reset_index(drop=True)
 
-        # Split into train/val/test (e.g., 70/15/15)
+        # Add time_idx and group_id for TFT
+        df_featured['time_idx'] = range(len(df_featured))
+        df_featured['group_id'] = 0  # Single series
+
+        # Define features
+        static_categoricals = []
+        static_reals = []
+        time_varying_known_categoricals = ['hour', 'day_of_week', 'month']
+        time_varying_known_reals = ['sin_hour', 'cos_hour', 'temperature', 'humidity', 'wind_speed', 'rainfall']
+        time_varying_unknown_categoricals = []
+        time_varying_unknown_reals = ['load_mw'] + [f'load_lag_{lag}' for lag in self.config['features']['lags']] + [f'rolling_mean_{w}' for w in self.config['features']['rolling_windows']]
+
+        # Split
         n = len(df_featured)
         train_end = int(0.7 * n)
         val_end = int(0.85 * n)
@@ -67,12 +80,30 @@ class DatasetBuilder:
         val_df = df_featured[train_end:val_end]
         test_df = df_featured[val_end:]
 
-        # Create datasets
-        train_ds = TimeSeriesDataset(train_df, self.config['pipeline']['encoder_window'],
-                                     self.config['pipeline']['decoder_window'], self.config['pipeline']['stride'])
-        val_ds = TimeSeriesDataset(val_df, self.config['pipeline']['encoder_window'],
-                                   self.config['pipeline']['decoder_window'], self.config['pipeline']['stride'])
-        test_ds = TimeSeriesDataset(test_df, self.config['pipeline']['encoder_window'],
-                                    self.config['pipeline']['decoder_window'], self.config['pipeline']['stride'])
+        max_encoder_length = self.config['pipeline']['encoder_window']
+        max_prediction_length = self.config['pipeline']['decoder_window']
 
-        return train_ds, val_ds, test_ds
+        training = TimeSeriesDataSet(
+            train_df,
+            time_idx="time_idx",
+            target="load_mw",
+            group_ids=["group_id"],
+            min_encoder_length=max_encoder_length // 2,
+            max_encoder_length=max_encoder_length,
+            min_prediction_length=1,
+            max_prediction_length=max_prediction_length,
+            static_categoricals=static_categoricals,
+            static_reals=static_reals,
+            time_varying_known_categoricals=time_varying_known_categoricals,
+            time_varying_known_reals=time_varying_known_reals,
+            time_varying_unknown_categoricals=time_varying_unknown_categoricals,
+            time_varying_unknown_reals=time_varying_unknown_reals,
+            add_relative_time_idx=True,
+            add_target_scales=True,
+            add_encoder_length=True,
+        )
+
+        val_dataset = TimeSeriesDataSet.from_dataset(training, val_df, predict=True, stop_randomization=True)
+        test_dataset = TimeSeriesDataSet.from_dataset(training, test_df, predict=True, stop_randomization=True)
+
+        return training, val_dataset, test_dataset
