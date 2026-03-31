@@ -1,83 +1,82 @@
-import torch
+"""Placeholder inference utilities for the forecasting system."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+import numpy as np
 import pandas as pd
-from pytorch_forecasting import TimeSeriesDataSet
-from src.forecast_repository import ForecastRepository
-from src.tft_model import TFTModel
-import yaml
 
-class ForecastEngine:
-    def __init__(self, config_path: str):
-        self.config = self.load_config(config_path)
-        self.repository = ForecastRepository(self.config)
-        self.model = self.load_model()
 
-    def load_config(self, config_path: str) -> dict:
-        with open(config_path, 'r') as f:
-            import yaml
-            return yaml.safe_load(f)
+def load_model(checkpoint_path: str) -> dict[str, Any]:
+    """Load a forecasting model from disk.
 
-    def load_model(self) -> TFTModel:
-        model = TFTModel(self.config)
-        epoch = self.repository.load_model_checkpoint("final_model", model, torch.optim.Adam(model.parameters()))
-        model.eval()
-        return model
+    This is a scaffold implementation that returns lightweight metadata instead
+    of reconstructing a real model object.
 
-    def generate_forecast(self, input_df: pd.DataFrame) -> pd.DataFrame:
-        """Generate forecast for the next horizon."""
-        # Prepare input data similar to training
-        input_df = input_df.copy()
-        input_df['time_idx'] = range(len(input_df))
-        input_df['group_id'] = 0
+    Args:
+        checkpoint_path: Path to the serialized model checkpoint.
 
-        # Create dataset for prediction
-        prediction_dataset = TimeSeriesDataSet(
-            input_df,
-            time_idx="time_idx",
-            target="load_mw",
-            group_ids=["group_id"],
-            min_encoder_length=self.config['pipeline']['encoder_window'] // 2,
-            max_encoder_length=self.config['pipeline']['encoder_window'],
-            min_prediction_length=1,
-            max_prediction_length=self.config['pipeline']['decoder_window'],
-            static_categoricals=[],
-            static_reals=[],
-            time_varying_known_categoricals=['hour', 'day_of_week', 'month'],
-            time_varying_known_reals=['sin_hour', 'cos_hour', 'temperature', 'humidity', 'wind_speed', 'rainfall'],
-            time_varying_unknown_categoricals=[],
-            time_varying_unknown_reals=['load_mw'] + [f'load_lag_{lag}' for lag in self.config['features']['lags']] + [f'rolling_mean_{w}' for w in self.config['features']['rolling_windows']],
-            add_relative_time_idx=True,
-            add_target_scales=True,
-            add_encoder_length=True,
-        )
+    Returns:
+        A placeholder model representation that downstream code can consume.
+    """
 
-        # Create dataloader
-        from torch.utils.data import DataLoader
-        pred_dataloader = DataLoader(prediction_dataset, batch_size=1)
+    return {
+        "model_name": "placeholder_forecast_model",
+        "checkpoint_path": checkpoint_path,
+        "exists": Path(checkpoint_path).exists(),
+    }
 
-        # Predict
-        predictions = []
-        for batch in pred_dataloader:
-            with torch.no_grad():
-                pred = self.model.predict(batch, mode="prediction")
-                predictions.append(pred)
 
-        # Process predictions (assuming quantiles)
-        quantiles = self.config['model']['quantiles']
-        pred_df = pd.DataFrame()
-        for i, q in enumerate(quantiles):
-            pred_df[f'q{q}'] = predictions[0][0, :, i].numpy()
+def load_test_data(path: str) -> pd.DataFrame:
+    """Load inference-time test data.
 
-        return pred_df
+    If the provided file does not exist, the function returns a dummy dataframe
+    so the scaffold can run end-to-end without external setup.
 
-    def recursive_forecast(self, initial_data: pd.DataFrame, steps: int) -> pd.DataFrame:
-        """Generate recursive forecast by updating input with predictions."""
-        current_data = initial_data.copy()
-        forecasts = []
+    Args:
+        path: Location of a CSV file containing at least a timestamp column.
 
-        for _ in range(0, steps, self.config['pipeline']['decoder_window']):
-            pred = self.generate_forecast(current_data)
-            forecasts.append(pred)
-            # Update current_data with predictions (simplified)
-            # In practice, need to append predicted values and update features
+    Returns:
+        A dataframe with timestamps and placeholder actual values.
+    """
 
-        return pd.concat(forecasts, ignore_index=True)
+    input_path = Path(path)
+    if input_path.exists():
+        data = pd.read_csv(input_path)
+        if "timestamp" in data.columns:
+            data["timestamp"] = pd.to_datetime(data["timestamp"])
+        return data
+
+    timestamps = pd.date_range(start="2026-01-01 00:00:00", periods=24, freq="h")
+    actual = np.linspace(100.0, 123.0, num=len(timestamps))
+    return pd.DataFrame({"timestamp": timestamps, "actual": actual})
+
+
+def run_inference(model: Any, data: pd.DataFrame) -> pd.DataFrame:
+    """Run placeholder inference and align predictions with timestamps.
+
+    Args:
+        model: Placeholder model object returned by :func:`load_model`.
+        data: Input dataframe that should include a timestamp column.
+
+    Returns:
+        A dataframe with timestamps and placeholder predictions.
+    """
+
+    if "timestamp" not in data.columns:
+        timestamps = pd.date_range(start="2026-01-01 00:00:00", periods=len(data), freq="h")
+    else:
+        timestamps = pd.to_datetime(data["timestamp"])
+
+    base_values = np.arange(len(timestamps), dtype=float)
+    predictions = 100.0 + base_values
+
+    return pd.DataFrame(
+        {
+            "timestamp": timestamps,
+            "prediction": predictions,
+            "model_name": str(model.get("model_name", "unknown_model")),
+        }
+    )
