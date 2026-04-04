@@ -16,6 +16,22 @@ downloads/
 *.egg
 MANIFEST
 
+# Notebook / analysis caches
+.ipynb_checkpoints/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.pyre/
+.tox/
+.nox/
+htmlcov/
+.coverage
+.coverage.*
+
+# Local environment managers
+.venv/
+pip-wheel-metadata/
+
 # ============================================
 # Virtual Environments
 # ============================================
@@ -48,10 +64,34 @@ backend/models/*
 *.ckpt
 !backend/models/tft_delhi_v1.ckpt
 
+# Frontend dependencies and build output
+frontend/node_modules/
+frontend/.vite/
+frontend/.next/
+frontend/.turbo/
+frontend/.vercel/
+frontend/.eslintcache
+frontend/coverage/
+frontend/dist/
+frontend/out/
+
+# Root frontend caches
+node_modules/
+.next/
+.turbo/
+.vercel/
+.eslintcache
+coverage/
+out/
+
 # Data & Logs
 backend/data/*
 !backend/data/training_data.parquet
 !backend/data/todays_forecast.json
+data/outputs/
+data/raw/electricity_demand.csv
+data/training_data.parquet
+data/todays_forecast.json
 research_and_tools/logs/
 
 # Temporary & Research Files
@@ -70,6 +110,10 @@ temp_*/
 *.log
 train_log.txt
 evaluation_results.txt
+
+# Backend local runtime files
+backend/.env
+backend/app.db
 
 # ============================================
 # Testing & Coverage
