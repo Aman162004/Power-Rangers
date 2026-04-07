@@ -40,28 +40,83 @@ class DatasetBuilder:
     def __init__(self, config: dict, feature_engineer):
         self.config = config
         self.feature_engineer = feature_engineer
+        self.last_preprocess_report = {}
 
     def load_raw_data(self, file_path: str) -> pd.DataFrame:
         """Load raw CSV data."""
         return pd.read_csv(file_path)
 
     def preprocess_data(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Basic preprocessing: sort by timestamp, handle missing values."""
-        df = df.sort_values('timestamp').reset_index(drop=True)
-        # Simple forward fill for missing values
-        df = df.fillna(method='ffill')
-        return df
+        """Preprocess data with timestamp normalization and transparent missing handling."""
+        if 'timestamp' not in df.columns:
+            raise ValueError("Input data must contain a 'timestamp' column.")
+
+        work_df = df.copy()
+        work_df['timestamp'] = pd.to_datetime(work_df['timestamp'], errors='coerce')
+        invalid_timestamp_rows = int(work_df['timestamp'].isna().sum())
+        work_df = work_df.dropna(subset=['timestamp'])
+
+        pre_dedup_rows = len(work_df)
+        work_df = work_df.sort_values('timestamp').drop_duplicates(subset=['timestamp'], keep='first').reset_index(drop=True)
+        duplicate_rows_removed = int(pre_dedup_rows - len(work_df))
+
+        value_columns = [col for col in work_df.columns if col != 'timestamp']
+        missing_counts_before_fill = work_df[value_columns].isna().sum().to_dict()
+
+        # Keep explicit missing indicators so downstream users can inspect data quality.
+        for col in value_columns:
+            work_df[f'{col}_was_missing'] = work_df[col].isna().astype(int)
+
+        work_df[value_columns] = work_df[value_columns].ffill().bfill()
+
+        # Final safety net: fill any residual values using simple per-column statistics.
+        for col in value_columns:
+            if work_df[col].isna().any():
+                if np.issubdtype(work_df[col].dtype, np.number):
+                    work_df[col] = work_df[col].fillna(work_df[col].median())
+                else:
+                    mode_values = work_df[col].mode(dropna=True)
+                    fill_value = mode_values.iloc[0] if not mode_values.empty else "unknown"
+                    work_df[col] = work_df[col].fillna(fill_value)
+
+        self.last_preprocess_report = {
+            'rows_input': int(len(df)),
+            'rows_after_timestamp_cleanup': int(len(work_df)),
+            'invalid_timestamp_rows': invalid_timestamp_rows,
+            'duplicate_rows_removed': duplicate_rows_removed,
+            'missing_counts_before_fill': missing_counts_before_fill,
+        }
+
+        return work_df
+
+    def split_dataframe(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+        """Split dataframe chronologically into train/val/test with 70/15/15 ratio."""
+        n = len(df)
+        train_end = int(0.7 * n)
+        val_end = int(0.85 * n)
+
+        train_df = df.iloc[:train_end].reset_index(drop=True)
+        val_df = df.iloc[train_end:val_end].reset_index(drop=True)
+        test_df = df.iloc[val_end:].reset_index(drop=True)
+        return train_df, val_df, test_df
 
     def build_datasets(self, df: pd.DataFrame) -> Tuple[TimeSeriesDataSet, TimeSeriesDataSet, TimeSeriesDataSet]:
         """Build train, val, test datasets using pytorch_forecasting."""
-        # Apply feature engineering
-        df_featured = self.feature_engineer.engineer_features(df)
-        # Drop NaN from lags and rolling
-        df_featured = df_featured.dropna().reset_index(drop=True)
+        lag_cols = [f'load_lag_{lag}' for lag in self.config['features']['lags']]
+        rolling_cols = [f'rolling_mean_{w}' for w in self.config['features']['rolling_windows']]
+        required_feature_cols = ['hour', 'day_of_week', 'month'] + lag_cols + rolling_cols
+
+        if all(col in df.columns for col in required_feature_cols):
+            df_featured = df.copy().reset_index(drop=True)
+        else:
+            df_featured = self.feature_engineer.engineer_features(df)
+            df_featured = df_featured.dropna().reset_index(drop=True)
 
         # Add time_idx and group_id for TFT
-        df_featured['time_idx'] = range(len(df_featured))
-        df_featured['group_id'] = 0  # Single series
+        if 'time_idx' not in df_featured.columns:
+            df_featured['time_idx'] = range(len(df_featured))
+        if 'group_id' not in df_featured.columns:
+            df_featured['group_id'] = 0  # Single series
 
         # Define features
         static_categoricals = []
@@ -72,13 +127,7 @@ class DatasetBuilder:
         time_varying_unknown_reals = ['load_mw'] + [f'load_lag_{lag}' for lag in self.config['features']['lags']] + [f'rolling_mean_{w}' for w in self.config['features']['rolling_windows']]
 
         # Split
-        n = len(df_featured)
-        train_end = int(0.7 * n)
-        val_end = int(0.85 * n)
-
-        train_df = df_featured[:train_end]
-        val_df = df_featured[train_end:val_end]
-        test_df = df_featured[val_end:]
+        train_df, val_df, test_df = self.split_dataframe(df_featured)
 
         max_encoder_length = self.config['pipeline']['encoder_window']
         max_prediction_length = self.config['pipeline']['decoder_window']

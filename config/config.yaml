@@ -2,6 +2,7 @@ data:
   raw_path: "data/raw/electricity_demand.csv"
   processed_path: "data/processed/"
   models_path: "models/"
+  prep_metadata_path: "data/processed/prep_metadata.json"
 
 ingestion:
   start_date: "2023-01-01"
