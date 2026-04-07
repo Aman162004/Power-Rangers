@@ -3,6 +3,23 @@ data:
   processed_path: "data/processed/"
   models_path: "models/"
 
+ingestion:
+  start_date: "2023-01-01"
+  end_date: "2023-01-31"
+  latitude: 28.6139
+  longitude: 77.2090
+  timezone: "Asia/Kolkata"
+  retry_total: 5
+  backoff_factor: 0.3
+  timeout_seconds: 10
+  sldc_sleep_seconds: 0.4
+  weather_cache_path: ".cache/openmeteo"
+  outputs:
+    load_snapshot: "data/raw/load_sldc.csv"
+    weather_snapshot: "data/raw/weather_openmeteo.csv"
+    merged_snapshot: "data/raw/electricity_demand.csv"
+    manifest: "data/raw/ingestion_manifest.json"
+
 pipeline:
   encoder_window: 24  # 6 hours * 4
   decoder_window: 192   # 48 hours prediction
