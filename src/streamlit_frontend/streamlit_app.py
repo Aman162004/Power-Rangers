@@ -3,10 +3,10 @@ import pandas as pd
 import numpy as np
 from src.forecast_engine import ForecastEngine
 from src.evaluation import ModelEvaluator
-from src.scenario_simulation import ScenarioSimulator
-from src.visualization import ForecastVisualizer
-from src.peak_demand import PeakDemandDetector
-from src.probabilistic_forecasting import ProbabilisticForecasting
+from src.streamlit_frontend.scenario_simulation import ScenarioSimulator
+from src.streamlit_frontend.visualization import ForecastVisualizer
+from src.streamlit_frontend.peak_detection import find_peak
+from src.streamlit_frontend.probabilistic_forecasting import ProbabilisticForecasting
 import yaml
 
 def load_config():
@@ -24,7 +24,6 @@ def main():
     evaluator = ModelEvaluator(config)
     simulator = ScenarioSimulator(config, forecast_engine)
     visualizer = ForecastVisualizer(config)
-    peak_detector = PeakDemandDetector(config)
     pf = ProbabilisticForecasting(config)
 
     # Load sample data for demo
@@ -59,7 +58,9 @@ def main():
             # Peak detection
             point_forecast = pf.get_point_forecast(forecast)
             timestamps = pd.date_range(start=start_time, periods=len(point_forecast), freq='15min')
-            peak_time, peak_value = peak_detector.detect_peak(point_forecast, timestamps)
+            peak_info = find_peak(forecast)
+            peak_time = pd.to_datetime(peak_info['peak_timestamp'])
+            peak_value = peak_info['peak_value']
 
             st.subheader("Peak Demand Detection")
             st.write(f"Predicted Peak: {peak_value:.2f} MW at {peak_time}")
