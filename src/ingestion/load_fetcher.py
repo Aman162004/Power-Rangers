@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from datetime import date, datetime, timedelta
+from io import StringIO
 from typing import Iterable
 
 import pandas as pd
@@ -97,7 +98,7 @@ def fetch_sldc_load_data(
 
         soup = BeautifulSoup(response.text, "lxml")
         try:
-            tables = pd.read_html(str(soup))
+            tables = pd.read_html(StringIO(str(soup)))
         except ValueError:
             time.sleep(sleep_seconds)
             continue

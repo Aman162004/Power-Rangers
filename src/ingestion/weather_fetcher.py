@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
+from typing import Iterable
 
 import pandas as pd
 import requests_cache
@@ -27,10 +28,15 @@ def _cached_session(cache_name: str, retry_total: int, backoff_factor: float):
 
 
 def _choose_openmeteo_url(end_date: str) -> str:
-    end_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
-    if end_dt >= date.today() - timedelta(days=5):
-        return "https://api.open-meteo.com/v1/forecast"
     return "https://archive-api.open-meteo.com/v1/archive"
+
+
+def _iter_date_chunks(start_dt: date, end_dt: date, chunk_days: int = 31) -> Iterable[tuple[date, date]]:
+    current = start_dt
+    while current <= end_dt:
+        chunk_end = min(current + timedelta(days=chunk_days - 1), end_dt)
+        yield current, chunk_end
+        current = chunk_end + timedelta(days=1)
 
 
 def fetch_openmeteo_weather_data(
@@ -48,42 +54,50 @@ def fetch_openmeteo_weather_data(
     session = _cached_session(cache_name=cache_name, retry_total=retry_total, backoff_factor=backoff_factor)
     url = _choose_openmeteo_url(end_date=end_date)
 
-    params = {
+    params_base = {
         "latitude": latitude,
         "longitude": longitude,
-        "start_date": start_date,
-        "end_date": end_date,
-        "hourly": [
-            "temperature_2m",
-            "relative_humidity_2m",
-            "wind_speed_10m",
-            "precipitation",
-        ],
+        "hourly": "temperature_2m,relative_humidity_2m,wind_speed_10m,precipitation",
         "timezone": timezone,
     }
 
-    response = session.get(url, params=params, timeout=20)
-    response.raise_for_status()
+    start_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
+    end_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
+    frames: list[pd.DataFrame] = []
 
-    payload = response.json()
-    hourly = payload.get("hourly", {})
-
-    weather_df = pd.DataFrame(
-        {
-            "timestamp": hourly.get("time", []),
-            "temperature": hourly.get("temperature_2m", []),
-            "humidity": hourly.get("relative_humidity_2m", []),
-            "wind_speed": hourly.get("wind_speed_10m", []),
-            "rainfall": hourly.get("precipitation", []),
+    for chunk_start, chunk_end in _iter_date_chunks(start_dt, end_dt):
+        params = {
+            **params_base,
+            "start_date": chunk_start.strftime("%Y-%m-%d"),
+            "end_date": chunk_end.strftime("%Y-%m-%d"),
         }
-    )
 
-    if weather_df.empty:
+        response = session.get(url, params=params, timeout=20)
+        response.raise_for_status()
+
+        payload = response.json()
+        hourly = payload.get("hourly", {})
+
+        chunk_df = pd.DataFrame(
+            {
+                "timestamp": hourly.get("time", []),
+                "temperature": hourly.get("temperature_2m", []),
+                "humidity": hourly.get("relative_humidity_2m", []),
+                "wind_speed": hourly.get("wind_speed_10m", []),
+                "rainfall": hourly.get("precipitation", []),
+            }
+        )
+
+        if not chunk_df.empty:
+            chunk_df["timestamp"] = pd.to_datetime(chunk_df["timestamp"], errors="coerce")
+            chunk_df = chunk_df.dropna(subset=["timestamp"]).sort_values("timestamp")
+            frames.append(chunk_df)
+
+    if not frames:
         return pd.DataFrame(columns=["timestamp", "temperature", "humidity", "wind_speed", "rainfall"])
 
-    weather_df["timestamp"] = pd.to_datetime(weather_df["timestamp"], errors="coerce")
-    weather_df = weather_df.dropna(subset=["timestamp"]).sort_values("timestamp")
-
+    weather_df = pd.concat(frames, ignore_index=True)
+    weather_df = weather_df.drop_duplicates(subset=["timestamp"]).sort_values("timestamp")
     weather_df = (
         weather_df.set_index("timestamp")
         .resample("15min")

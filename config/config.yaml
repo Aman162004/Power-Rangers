@@ -1,12 +1,45 @@
 data:
-  raw_path: "data/raw/electricity_demand.csv"
-  processed_path: "data/processed/"
-  models_path: "models/"
-  prep_metadata_path: "data/processed/prep_metadata.json"
+  # Historical lane: immutable training data, locked for model development only
+  historical_raw_path: "data/historical/raw/"
+  historical_feature_engineered_path: "data/historical/feature_engineered/"
+  historical_final_processed_path: "data/historical/final_processed/"
+  historical_merged_file: "data/historical/raw/electricity_demand_2021-01-01_to_2026-04-06.csv"
+  historical_demand_load_path: "data/historical/raw/demand_load/"
+  historical_weather_path: "data/historical/raw/weather/"
+  historical_calendar_path: "data/historical/raw/calendar/"
+  
+  # Operational lane: ephemeral scraping data for future inference only
+  operational_raw_path: "data/operational/raw/"
+  operational_processed_path: "data/operational/processed/"
+  
+  # Models and metadata
+  models_root: "models/"
+  models_checkpoints_dir: "models/runs/"
+  models_config_dir: "models/config/"
+  active_model_pointer: "models/ACTIVE_MODEL.txt"
+  prep_metadata_path: "data/historical/final_processed/prep_metadata.json"
+  
+  # Training input (splits)
+  historical_splits_path: "data/historical/final_processed/"
+  training_splits:
+    train: "train_data.parquet"
+    val: "val_data.parquet"
+    test: "test_data.parquet"
+  
+  # Features to drop (audit, redundant, or pre-processing artifacts)
+  training_drop_columns:
+    - "day_of_year"  # redundant with hour, day_of_week, month
+    - "week_of_year"  # redundant
+    - "is_weekend"  # derivable from day_of_week
+    - "load_mw_raw"  # original before outlier clipping; use clipped version
+    - "load_outlier_detected"  # flag only, not a feature
+    # Drop all audit columns: *_was_missing
+  training_drop_pattern: ".*_was_missing$"
 
 ingestion:
-  start_date: "2023-01-01"
-  end_date: "2023-01-31"
+  start_date: "2026-04-07"
+  end_date: "2026-04-13"
+  base_csv_path: "data/historical/raw/demand_load/powerdemand_5min_2021_to_2024_load_only.csv"
   latitude: 28.6139
   longitude: 77.2090
   timezone: "Asia/Kolkata"
@@ -16,10 +49,10 @@ ingestion:
   sldc_sleep_seconds: 0.4
   weather_cache_path: ".cache/openmeteo"
   outputs:
-    load_snapshot: "data/raw/load_sldc.csv"
-    weather_snapshot: "data/raw/weather_openmeteo.csv"
-    merged_snapshot: "data/raw/electricity_demand.csv"
-    manifest: "data/raw/ingestion_manifest.json"
+    load_snapshot: "data/operational/raw/load_sldc_{start_date}_to_{end_date}.csv"
+    weather_snapshot: "data/operational/raw/weather_openmeteo_{start_date}_to_{end_date}.csv"
+    merged_snapshot: "data/operational/raw/electricity_demand_{start_date}_to_{end_date}.csv"
+    manifest: "data/operational/raw/ingestion_manifest_{start_date}_to_{end_date}.json"
 
 pipeline:
   encoder_window: 24  # 6 hours * 4
@@ -38,10 +71,24 @@ model:
   output_size: 1  # For point predictions, or 3 for quantiles
   loss: "quantile"  # or "mae"
   quantiles: [0.1, 0.5, 0.9]
-  learning_rate: 0.001
+  learning_rate: 0.0003
   max_epochs: 50
-  batch_size: 32
+  batch_size: 128
 
 training:
   early_stopping_patience: 10
   checkpoint_every: 5
+  # Resume policy: 'auto' (default), 'scratch' (always from scratch), 'require' (fail if no checkpoint)
+  resume_policy: "auto"
+  # For trusted local checkpoints, set to false to allow full checkpoint resume on PyTorch>=2.6.
+  resume_weights_only: false
+  # Checkpoint strategy: 'last' (only last), 'best' (best + last), 'all' (every epoch + last)
+  checkpoint_save_strategy: "all"
+  checkpoint_every_n_epochs: 1
+  # Performance tuning
+  precision: "16-mixed"
+  num_workers: 8
+  pin_memory: true
+  persistent_workers: true
+  prefetch_factor: 4
+  cudnn_benchmark: true
