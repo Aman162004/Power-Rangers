@@ -33,6 +33,7 @@ from src.training.training_pipeline import (  # noqa: E402
     _register_safe_globals_for_checkpoint_resume,
     load_config,
 )
+from src.evaluation import evaluate_all  # noqa: E402
 from src.training.run_manager import TrainingRunManager  # noqa: E402
 
 
@@ -94,16 +95,12 @@ def _build_model(config: dict[str, Any], train_dataset) -> TemporalFusionTransfo
 
 def _metrics_from_predictions(actual: np.ndarray, p50: np.ndarray) -> dict[str, float]:
     """Compute the standard regression metrics against the median forecast."""
-    diff = actual - p50
-    mae = float(np.mean(np.abs(diff)))
-    rmse = float(np.sqrt(np.mean(diff ** 2)))
-    mape = float(np.mean(np.abs(diff / np.clip(actual, 1e-6, None))) * 100)
-    smape = float(np.mean(2.0 * np.abs(diff) / np.clip(np.abs(actual) + np.abs(p50), 1e-6, None)) * 100)
+    summary = evaluate_all(actual, p50)
     return {
-        "MAE": mae,
-        "RMSE": rmse,
-        "MAPE": mape,
-        "SMAPE": smape,
+        "MAE": summary["mae"],
+        "RMSE": summary["rmse"],
+        "MAPE": summary["mape"],
+        "SMAPE": summary["smape"],
     }
 
 
