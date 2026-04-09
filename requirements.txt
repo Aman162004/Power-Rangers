@@ -6,7 +6,6 @@ scikit-learn>=1.5.1,<2.0
 torch>=2.4.0,<3.0
 pytorch-lightning>=2.3.3,<3.0
 pytorch-forecasting>=1.0.0,<2.0
-streamlit>=1.36.0,<2.0
 plotly>=5.22.0,<6.0
 matplotlib>=3.9.0,<4.0
 requests>=2.32.3,<3.0
@@ -14,3 +13,5 @@ requests-cache>=1.2.1,<2.0
 beautifulsoup4>=4.12.3,<5.0
 lxml>=5.2.2
 holidays>=0.35,<1.0
+fastapi
+uvicorn

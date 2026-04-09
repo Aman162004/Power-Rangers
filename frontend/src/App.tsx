@@ -74,33 +74,27 @@ export default function App() {
 
   useEffect(() => {
     const loadAnalytics = async () => {
-      const [metricsRes, peakRes, csvRes] = await Promise.all([
-        fetch("/analytics/metrics.json"),
-        fetch("/analytics/peak.json"),
-        fetch("/analytics/predictions.csv"),
-      ]);
+      try {
+        const response = await fetch("http://localhost:8000/api/forecast?days_to_fetch=3", { method: "POST" });
+        if (!response.ok) {
+          return;
+        }
 
-      if (!metricsRes.ok || !peakRes.ok || !csvRes.ok) {
-        return;
+        const data = await response.json();
+
+        setMetrics(data.metrics);
+        setPeak(data.peak);
+
+        const parsedPoints = data.predictions.map((p: any) => ({
+          timestamp: p.timestamp,
+          prediction: p.predicted_load_mw,
+          model_name: "TFT",
+        }));
+
+        setPoints(parsedPoints);
+      } catch (err) {
+        console.error("Failed to fetch analytics from backend", err);
       }
-
-      const metricsJson = (await metricsRes.json()) as Metrics;
-      const peakJson = (await peakRes.json()) as Peak;
-      const csvText = await csvRes.text();
-
-      const rows = csvText.trim().split("\n");
-      const parsedPoints = rows.slice(1).map((row) => {
-        const [timestamp, prediction, model_name] = row.split(",");
-        return {
-          timestamp,
-          prediction: Number(prediction),
-          model_name,
-        };
-      });
-
-      setMetrics(metricsJson);
-      setPeak(peakJson);
-      setPoints(parsedPoints);
     };
 
     loadAnalytics();
