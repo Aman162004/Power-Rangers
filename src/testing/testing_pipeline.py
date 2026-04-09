@@ -33,7 +33,7 @@ from src.training.training_pipeline import (  # noqa: E402
     _register_safe_globals_for_checkpoint_resume,
     load_config,
 )
-from src.evaluation import evaluate_all  # noqa: E402
+from src.evaluation.evaluation import evaluate_all  # noqa: E402
 from src.training.run_manager import TrainingRunManager  # noqa: E402
 
 

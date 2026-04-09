@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from src.forecast_engine import ForecastEngine
+from src.forecast.forecast_engine import ForecastEngine
 
 class ScenarioSimulator:
     def __init__(self, config: dict, forecast_engine: ForecastEngine):

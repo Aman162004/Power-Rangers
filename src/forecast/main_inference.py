@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pandas as pd
@@ -11,10 +12,14 @@ try:
 except ImportError:  # pragma: no cover - optional dependency for scaffold mode
     yaml = None
 
-from evaluation import evaluate_all
-from forecast_engine import load_model, load_test_data, run_inference
-from peak_detection import find_peak
-from results_exporter import save_metrics, save_peak, save_predictions
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.evaluation.evaluation import evaluate_all
+from src.evaluation.results_exporter import save_metrics, save_peak, save_predictions
+from src.forecast.forecast_engine import load_model, load_test_data, run_inference
+from src.forecast.peak_detection import find_peak
 
 
 def _load_project_config(config_path: Path) -> dict:
@@ -86,7 +91,7 @@ def _extract_ground_truth(test_data: pd.DataFrame, predictions: pd.DataFrame) ->
 def main() -> None:
     """Execute the placeholder inference pipeline end to end."""
 
-    project_root = Path(__file__).resolve().parents[1]
+    project_root = PROJECT_ROOT
     config = _load_project_config(project_root / "config" / "config.yaml")
     output_dir = project_root / "data" / "outputs"
 

@@ -1,13 +1,19 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from src.forecast_engine import ForecastEngine
-from src.evaluation import ModelEvaluator
+import sys
+from pathlib import Path
+from src.forecast.forecast_engine import ForecastEngine
+from src.evaluation.evaluation import ModelEvaluator
 from src.streamlit_frontend.scenario_simulation import ScenarioSimulator
 from src.streamlit_frontend.visualization import ForecastVisualizer
 from src.streamlit_frontend.peak_detection import find_peak
 from src.streamlit_frontend.probabilistic_forecasting import ProbabilisticForecasting
 import yaml
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 def load_config():
     with open("config/config.yaml", 'r') as f:
@@ -28,7 +34,7 @@ def main():
 
     # Load sample data for demo
     try:
-        historical_data = pd.read_parquet("data/processed/train_data.parquet").tail(100)
+        historical_data = pd.read_parquet("data/historical/final_processed/train_data.parquet").tail(100)
         input_data = historical_data.tail(24)  # Last 24 points for forecasting
     except:
         st.error("Please run the data pipeline first to generate processed data.")
@@ -73,7 +79,7 @@ def main():
 
         # Load test data
         try:
-            test_data = pd.read_parquet("data/processed/test_data.parquet")
+            test_data = pd.read_parquet("data/historical/final_processed/test_data.parquet")
             forecast_test = forecast_engine.generate_forecast(test_data.tail(24))
             actual_test = test_data.tail(len(forecast_test))
 

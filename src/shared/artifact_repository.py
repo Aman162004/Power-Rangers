@@ -7,7 +7,11 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-import torch
+
+try:
+    import torch
+except ImportError:  # pragma: no cover - optional dependency for non-training flows
+    torch = None
 
 
 class ForecastRepository:
@@ -50,12 +54,15 @@ class ForecastRepository:
 
     def save_model_checkpoint(
         self,
-        model: torch.nn.Module,
-        optimizer: torch.optim.Optimizer,
+        model: Any,
+        optimizer: Any,
         epoch: int,
         name: str,
     ) -> None:
         """Save a generic PyTorch checkpoint under the configured models root."""
+
+        if torch is None:
+            raise ImportError("torch is required to save model checkpoints")
 
         path = Path(self.models_path) / f"{name}.pth"
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -71,10 +78,13 @@ class ForecastRepository:
     def load_model_checkpoint(
         self,
         name: str,
-        model: torch.nn.Module,
-        optimizer: torch.optim.Optimizer,
+        model: Any,
+        optimizer: Any,
     ) -> int:
         """Load a generic PyTorch checkpoint and return the saved epoch."""
+
+        if torch is None:
+            raise ImportError("torch is required to load model checkpoints")
 
         path = Path(self.models_path) / f"{name}.pth"
         checkpoint = torch.load(path)
