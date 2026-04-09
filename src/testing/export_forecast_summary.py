@@ -12,7 +12,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 TESTING_ROOT = PROJECT_ROOT / "models" / "testing"
 FINAL_MODEL_DIR = PROJECT_ROOT / "models" / "final model"
 FINAL_CHECKPOINT = FINAL_MODEL_DIR / "epoch=epoch=01-val_loss=val_loss=96.36.ckpt"
-OUTPUT_DIR = FINAL_MODEL_DIR / "forecast_evaluation"
+OUTPUT_DIR = PROJECT_ROOT / "data" / "outputs" / "forecast_evaluation"
 
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
