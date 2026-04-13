@@ -86,6 +86,8 @@ def _load_training_splits(config: dict) -> Tuple[pd.DataFrame, pd.DataFrame, pd.
     Fail fast if any split is missing; don't fall back to re-preprocessing.
     """
     splits_path = Path(config['data']['historical_splits_path'])
+    if not splits_path.is_absolute():
+        splits_path = PROJECT_ROOT / splits_path
     
     split_files = {
         'train': splits_path / config['data']['training_splits']['train'],

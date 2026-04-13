@@ -1,5 +1,7 @@
 import os
+import logging
 from datetime import datetime, timedelta
+import warnings
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException
@@ -13,8 +15,14 @@ project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
 from src.ingestion.load_fetcher import fetch_sldc_load_data
+from src.forecast.tft_inference import run_tft_inference
+from src.auth.routes import router as auth_router
+
+# Suppress TFT inference warnings during operation
+warnings.filterwarnings("ignore", module="pytorch_forecasting")
 
 app = FastAPI(title="Power Rangers Backend API")
+logger = logging.getLogger(__name__)
 
 # Setup CORS for React frontend
 app.add_middleware(
@@ -25,9 +33,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Register auth routes
+app.include_router(auth_router)
+
 OPERATIONAL_DIR = project_root / "data" / "operational"
-DEFAULT_HORIZON_STEPS = 96
-DEFAULT_SEASONALITY_STEPS = 96
 
 # Ensure operational directory exists
 os.makedirs(OPERATIONAL_DIR, exist_ok=True)
@@ -54,20 +63,20 @@ def fetch_and_predict(
     6. Applies optional temperature/aggressiveness scenario scaling.
     7. Returns both historical data and predictions.
     """
+    if days_to_fetch < 1:
+        raise HTTPException(status_code=400, detail="days_to_fetch must be >= 1")
+
+    # Temperature slider drives forecast scaling: 1 C maps to 2% load scaling.
+    if temperature_delta_c is not None:
+        if temperature_delta_c < -5 or temperature_delta_c > 5:
+            raise HTTPException(status_code=400, detail="temperature_delta_c must be between -5 and 5")
+        scenario_aggressiveness_pct = float(temperature_delta_c) * 2.0
+    else:
+        if aggressiveness_pct < -10 or aggressiveness_pct > 10:
+            raise HTTPException(status_code=400, detail="aggressiveness_pct must be between -10 and 10")
+        scenario_aggressiveness_pct = float(aggressiveness_pct)
+
     try:
-        if days_to_fetch < 1:
-            raise HTTPException(status_code=400, detail="days_to_fetch must be >= 1")
-
-        # Temperature slider drives forecast scaling: 1 C maps to 2% load scaling.
-        if temperature_delta_c is not None:
-            if temperature_delta_c < -5 or temperature_delta_c > 5:
-                raise HTTPException(status_code=400, detail="temperature_delta_c must be between -5 and 5")
-            scenario_aggressiveness_pct = float(temperature_delta_c) * 2.0
-        else:
-            if aggressiveness_pct < -10 or aggressiveness_pct > 10:
-                raise HTTPException(status_code=400, detail="aggressiveness_pct must be between -10 and 10")
-            scenario_aggressiveness_pct = float(aggressiveness_pct)
-
         # 1. Fetch data
         # If forecast_date is provided, interpret it as the first day of forecast horizon.
         # Use previous day as the historical endpoint so predictions are generated for selected day.
@@ -92,8 +101,12 @@ def fetch_and_predict(
         operational_file = OPERATIONAL_DIR / "recent_load.csv"
         load_df.to_csv(operational_file, index=False)
 
-        # 3. Forecast using seasonal profile + trend
-        forecast_df = _build_forecast(load_df, horizon_steps=DEFAULT_HORIZON_STEPS)
+        # 3. Generate TFT forecast with real model
+        forecast_df = _build_forecast_tft(
+            load_df, 
+            forecast_date=forecast_date if forecast_date else end_str
+        )
+
         forecast_df = _apply_aggressiveness(forecast_df, scenario_aggressiveness_pct)
         forecast_with_actuals = _attach_actuals_for_horizon(forecast_df)
         predictions = [
@@ -108,8 +121,8 @@ def fetch_and_predict(
             for row in forecast_with_actuals.itertuples(index=False)
         ]
 
-        # 4. Compute metrics from holdout performance
-        metrics = _compute_metrics(load_df)
+        # 4. Compute metrics from forecast-vs-actual overlap on the returned horizon
+        metrics = _compute_forecast_metrics(forecast_with_actuals)
 
         # Format historical data for JSON response
         historical_data = (
@@ -139,8 +152,11 @@ def fetch_and_predict(
             "message": "Data fetched and forecasts generated successfully.",
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Forecast request failed")
+        raise HTTPException(status_code=500, detail="Forecast generation failed. Check server logs.") from e
 
 
 def _infer_step_minutes(df: pd.DataFrame) -> int:
@@ -209,63 +225,35 @@ def _attach_actuals_for_horizon(forecast_df: pd.DataFrame) -> pd.DataFrame:
     return merged
 
 
-def _build_forecast(df: pd.DataFrame, horizon_steps: int) -> pd.DataFrame:
-    clean = df.copy()
-    clean["timestamp"] = pd.to_datetime(clean["timestamp"], errors="coerce")
-    clean["load_mw"] = pd.to_numeric(clean["load_mw"], errors="coerce")
-    clean = clean.dropna(subset=["timestamp", "load_mw"]).sort_values("timestamp")
+def _build_forecast_tft(load_df: pd.DataFrame, forecast_date: str | None = None) -> pd.DataFrame:
+    """Run TFT inference to generate probabilistic forecasts.
+    
+    Args:
+        load_df: Historical load data  
+        forecast_date: Date to forecast for (YYYY-MM-DD format)
+    
+    Returns:
+        DataFrame with timestamp, p10, p50, p90 columns
+    """
+    config_path = project_root / "config" / "config.yaml"
 
-    if clean.empty:
-        return pd.DataFrame(columns=["timestamp", "p10", "p50", "p90"])
+    # Run TFT inference only (no baseline fallback)
+    forecast_df = run_tft_inference(
+        config_path=str(config_path),
+        checkpoint_path=None,  # Auto-finds latest
+        historical_days=7,
+        forecast_date=forecast_date,
+        load_df=load_df,
+    )
 
-    history = clean["load_mw"].reset_index(drop=True)
-    last_ts = clean["timestamp"].iloc[-1]
-    step_minutes = _infer_step_minutes(clean)
+    # Ensure required columns exist and are numeric
+    forecast_df = forecast_df.copy()
+    forecast_df["timestamp"] = pd.to_datetime(forecast_df["timestamp"], errors="coerce")
+    for col in ["p10", "p50", "p90"]:
+        forecast_df[col] = pd.to_numeric(forecast_df[col], errors="coerce")
+        forecast_df[col] = forecast_df[col].clip(lower=0.0)  # No negative loads
 
-    seasonality = DEFAULT_SEASONALITY_STEPS
-    has_seasonality = len(history) >= seasonality
-
-    if len(history) >= seasonality * 2:
-        trend_per_step = float((history.iloc[-seasonality:].mean() - history.iloc[-2 * seasonality : -seasonality].mean()) / seasonality)
-    elif len(history) >= 2:
-        trend_per_step = float((history.iloc[-1] - history.iloc[0]) / max(len(history) - 1, 1))
-    else:
-        trend_per_step = 0.0
-
-    residuals = pd.Series(dtype=float)
-    if has_seasonality:
-        residuals = (history - history.shift(seasonality)).dropna()
-
-    if len(residuals) >= 20:
-        q10 = float(residuals.quantile(0.10))
-        q90 = float(residuals.quantile(0.90))
-    else:
-        avg = float(history.tail(seasonality).mean()) if has_seasonality else float(history.iloc[-1])
-        band = max(avg * 0.03, 50.0)
-        q10 = -band
-        q90 = band
-
-    rows = []
-    for i in range(1, horizon_steps + 1):
-        if has_seasonality:
-            base_idx = -seasonality + ((i - 1) % seasonality)
-            seasonal_base = float(history.iloc[base_idx])
-        else:
-            seasonal_base = float(history.iloc[-1])
-
-        p50 = max(seasonal_base + trend_per_step * i, 0.0)
-        p10 = max(p50 + q10, 0.0)
-        p90 = max(p50 + q90, p10)
-        rows.append(
-            {
-                "timestamp": last_ts + timedelta(minutes=step_minutes * i),
-                "p10": p10,
-                "p50": p50,
-                "p90": p90,
-            }
-        )
-
-    return pd.DataFrame(rows)
+    return forecast_df.dropna(subset=["timestamp", "p10", "p50", "p90"])
 
 
 def _apply_aggressiveness(forecast_df: pd.DataFrame, aggressiveness_pct: float) -> pd.DataFrame:
@@ -280,32 +268,41 @@ def _apply_aggressiveness(forecast_df: pd.DataFrame, aggressiveness_pct: float) 
     return scaled
 
 
-def _compute_metrics(df: pd.DataFrame) -> dict:
-    clean = df.copy()
-    clean["load_mw"] = pd.to_numeric(clean["load_mw"], errors="coerce")
-    clean = clean.dropna(subset=["load_mw"]).reset_index(drop=True)
+def _compute_forecast_metrics(forecast_df: pd.DataFrame) -> dict:
+    """Compute metrics from forecast p50 vs available actuals on the forecast horizon.
 
-    if clean.empty:
+    This function is intentionally defensive: metric errors should never fail the API.
+    """
+    try:
+        if forecast_df.empty:
+            return {"mae": 0.0, "rmse": 0.0, "mape": 0.0}
+
+        clean = forecast_df.copy()
+        clean["p50"] = pd.to_numeric(clean.get("p50"), errors="coerce")
+        clean["actual_load_mw"] = pd.to_numeric(clean.get("actual_load_mw"), errors="coerce")
+        clean = clean.dropna(subset=["p50", "actual_load_mw"]).reset_index(drop=True)
+
+        if clean.empty:
+            return {"mae": 0.0, "rmse": 0.0, "mape": 0.0}
+
+        errors = (clean["actual_load_mw"] - clean["p50"]).abs()
+        mae = float(errors.mean())
+        rmse = float(((clean["actual_load_mw"] - clean["p50"]) ** 2).mean() ** 0.5)
+
+        denom = clean["actual_load_mw"].abs().replace(0, pd.NA)
+        mape_series = (errors / denom).dropna() * 100.0
+        mape = float(mape_series.mean()) if not mape_series.empty else 0.0
+
+        if not pd.notna(mae):
+            mae = 0.0
+        if not pd.notna(rmse):
+            rmse = 0.0
+        if not pd.notna(mape):
+            mape = 0.0
+
+        return {"mae": round(mae, 2), "rmse": round(rmse, 2), "mape": round(mape, 2)}
+    except Exception:
         return {"mae": 0.0, "rmse": 0.0, "mape": 0.0}
-
-    seasonality = DEFAULT_SEASONALITY_STEPS
-    if len(clean) > seasonality:
-        y_true = clean["load_mw"].iloc[seasonality:]
-        y_pred = clean["load_mw"].shift(seasonality).iloc[seasonality:]
-    elif len(clean) > 1:
-        y_true = clean["load_mw"].iloc[1:]
-        y_pred = clean["load_mw"].shift(1).iloc[1:]
-    else:
-        only = float(clean["load_mw"].iloc[0])
-        return {"mae": 0.0, "rmse": 0.0, "mape": 0.0 if only == 0 else 0.0}
-
-    errors = (y_true - y_pred).abs()
-    mae = float(errors.mean())
-    rmse = float(((y_true - y_pred) ** 2).mean() ** 0.5)
-    denom = y_true.abs().replace(0, pd.NA)
-    mape = float(((errors / denom).dropna() * 100.0).mean()) if not denom.dropna().empty else 0.0
-
-    return {"mae": round(mae, 2), "rmse": round(rmse, 2), "mape": round(mape, 2)}
 
 
 if __name__ == "__main__":
