@@ -15,6 +15,12 @@ import { useAuth } from "../hooks/useAuth";
 
 type Metrics = { mae: number; rmse: number; mape: number };
 type Peak = { peak_value: number; peak_timestamp: string };
+type ForecastResponse = {
+  metrics: Metrics;
+  peak: Peak;
+  predictions: any[];
+  avg_temperature_c?: number | null;
+};
 type Point = {
   timestamp: string;
   prediction: number;
@@ -62,6 +68,7 @@ export function DashboardPage() {
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [peak, setPeak] = useState<Peak | null>(null);
   const [points, setPoints] = useState<Point[]>([]);
+  const [avgTemperatureC, setAvgTemperatureC] = useState<number | null>(null);
   const [selectedDate, setSelectedDate] = useState<string>(toLocalDateInput(new Date()));
   const [temperatureDeltaC, setTemperatureDeltaC] = useState<number>(0);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
@@ -112,10 +119,11 @@ export function DashboardPage() {
         throw new Error(`Request failed with status ${response.status}`);
       }
 
-      const data = await response.json();
+      const data = (await response.json()) as ForecastResponse;
 
       setMetrics(data.metrics);
       setPeak(data.peak);
+      setAvgTemperatureC(data.avg_temperature_c == null ? null : Number(data.avg_temperature_c));
 
       const parsedPoints = data.predictions.map((p: any) => {
         const p50 = Number(p.p50 ?? p.predicted_load_mw ?? 0);
@@ -137,6 +145,7 @@ export function DashboardPage() {
     } catch (err) {
       setFetchError("Unable to fetch forecast for the selected date.");
       setPoints([]);
+      setAvgTemperatureC(null);
       console.error("Failed to fetch analytics from backend", err);
     } finally {
       setIsLoading(false);
@@ -338,7 +347,9 @@ export function DashboardPage() {
             <div className="mt-4 flex flex-wrap gap-2 text-xs">
               <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-3 py-1 text-cyan-200">success</span>
               <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-300">{horizonHours}h horizon</span>
-              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-300">Avg temp 12.6 C</span>
+              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-300">
+                Avg temp {avgTemperatureC == null ? "--" : `${avgTemperatureC.toFixed(1)} C`}
+              </span>
             </div>
 
             <div className="mt-6 grid gap-4 md:grid-cols-4">

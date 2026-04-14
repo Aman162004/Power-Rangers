@@ -196,6 +196,12 @@ def run_tft_inference(
     except requests.RequestException as exc:
         print(f"[TFT] Weather fetch failed, continuing with fallback features: {exc}")
         weather_df = pd.DataFrame(columns=["timestamp", "temperature", "humidity", "wind_speed", "rainfall"])
+
+    avg_temperature_c = None
+    if not weather_df.empty and "temperature" in weather_df.columns:
+        temperature_series = pd.to_numeric(weather_df["temperature"], errors="coerce").dropna()
+        if not temperature_series.empty:
+            avg_temperature_c = float(temperature_series.mean())
     
     # Prepare inference data
     df = load_df.copy()
@@ -213,7 +219,7 @@ def run_tft_inference(
         if col not in df.columns:
             df[col] = 25.0 if col == "temperature" else (50.0 if col == "humidity" else (5.0 if col == "wind_speed" else 0.0))
         df[col] = df[col].ffill().bfill().fillna(df[col].mean())
-    
+
     # Add temporal features
     df["hour"] = df["timestamp"].dt.hour
     df["day_of_week"] = df["timestamp"].dt.dayofweek
@@ -335,5 +341,8 @@ def run_tft_inference(
     for col in ["p10", "p50", "p90"]:
         if col in results.columns:
             results[col] = results[col].clip(lower=0).astype(float)
-    
-    return results[["timestamp", "p10", "p50", "p90"]]
+
+    results = results[["timestamp", "p10", "p50", "p90"]]
+    results.attrs["avg_temperature_c"] = avg_temperature_c
+
+    return results

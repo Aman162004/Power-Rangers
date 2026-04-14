@@ -108,6 +108,7 @@ def fetch_and_predict(
             load_df, 
             forecast_date=forecast_date if forecast_date else end_str
         )
+        avg_temperature_c = forecast_df.attrs.get("avg_temperature_c")
 
         forecast_df = _apply_aggressiveness(forecast_df, scenario_aggressiveness_pct)
         forecast_with_actuals = _attach_actuals_for_horizon(forecast_df)
@@ -151,6 +152,7 @@ def fetch_and_predict(
             "history_end_date": end_str,
             "aggressiveness_pct": scenario_aggressiveness_pct,
             "temperature_delta_c": temperature_delta_c,
+            "avg_temperature_c": avg_temperature_c,
             "message": "Data fetched and forecasts generated successfully.",
         }
 
