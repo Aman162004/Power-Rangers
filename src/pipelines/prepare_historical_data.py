@@ -9,10 +9,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.preprocessing.feature_engineer import FeatureEngineer
-from src.preprocessing.dataset_builder import DatasetBuilder
+from src.feature_engineer import FeatureEngineer
+from src.dataset_builder import DatasetBuilder
 from src.shared.artifact_repository import ForecastRepository
-from src.preprocessing.data_quality import DataQualityReporter
+from src.data_quality import DataQualityReporter
 
 
 def _json_default(value):
