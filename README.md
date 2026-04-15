@@ -13,43 +13,52 @@ This repository currently uses:
 - `config/`: runtime configuration
 - `frontend/`: React dashboard (Vite + TypeScript + Tailwind)
 
+## Setup
+
+### Create Virtual Environment
+
+```bash
+python -m venv .venv
+```
+
+### Activate Virtual Environment
+
+**Linux/Mac:**
+```bash
+source .venv/bin/activate
+```
+
+**Windows:**
+```bash
+.venv\Scripts\activate
+```
+
 ## Backend (Python) Setup
 
-1. Create and activate a virtual environment.
+1. Create and activate a virtual environment (see steps above).
+
 2. Install dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Run forecasting pipeline/inference entrypoints as needed, for example:
+3. Seed the admin account:
 
 ```bash
-python main.py
+python src/auth/seed_admin.py
+```
+
+4. Start the uvicorn server:
+
+```bash
+uvicorn backend.main:app --reload
 ```
 
 ## Frontend (React + Vite) Setup
 
-1. Go to frontend folder:
-
 ```bash
 cd frontend
-```
-
-2. Install dependencies:
-
-```bash
-npm install
-```
-
-3. Start development server:
-
-```bash
+npm i
 npm run dev
-```
-
-4. Build production assets:
-
-```bash
-npm run build
 ```
