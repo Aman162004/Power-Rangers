@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+import requests
 
 import sys
 from pathlib import Path
@@ -36,6 +37,37 @@ os.makedirs(OPERATIONAL_DIR, exist_ok=True)
 @app.get("/api/health")
 def health_check():
     return {"status": "ok"}
+
+@app.get("/api/weather")
+def get_weather(date: str | None = None):
+    try:
+        if date:
+            # Try forecast API first
+            url_forecast = f"https://api.open-meteo.com/v1/forecast?latitude=28.6139&longitude=77.2090&start_date={date}&end_date={date}&daily=temperature_2m_mean"
+            response = requests.get(url_forecast, timeout=10)
+            
+            if response.status_code >= 400:
+                # Fallback to archive API for past dates
+                url_archive = f"https://archive-api.open-meteo.com/v1/archive?latitude=28.6139&longitude=77.2090&start_date={date}&end_date={date}&daily=temperature_2m_mean"
+                response = requests.get(url_archive, timeout=10)
+                
+            response.raise_for_status()
+            data = response.json()
+            daily_temps = data.get("daily", {}).get("temperature_2m_mean")
+            if daily_temps and len(daily_temps) > 0 and daily_temps[0] is not None:
+                current_temp = daily_temps[0]
+            else:
+                current_temp = 25.0
+        else:
+            url = "https://api.open-meteo.com/v1/forecast?latitude=28.6139&longitude=77.2090&current_weather=true"
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            current_temp = data.get("current_weather", {}).get("temperature", 25.0)
+
+        return {"temperature_c": current_temp, "location": "Delhi"}
+    except Exception as e:
+        return {"temperature_c": 25.0, "location": "Delhi (Fallback)", "error": str(e)}
 
 
 @app.post("/api/forecast")
