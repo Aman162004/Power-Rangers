@@ -42,35 +42,90 @@ def _safe_load_checkpoint(checkpoint_path: Path) -> dict[str, Any]:
     return torch.load(checkpoint_path, map_location="cpu", weights_only=False)
 
 
+def _parse_val_loss_from_filename(path: Path) -> float:
+    """
+    Extract the val_loss value embedded in a checkpoint filename.
+
+    Handles both naming styles:
+      - epoch=08-val_loss=80.13.ckpt          (clean)
+      - epoch=epoch=08-val_loss=val_loss=80.13.ckpt  (Lightning double-prefix)
+    Returns float('inf') if no val_loss is found so the file sorts last.
+    """
+    name = path.stem  # strip .ckpt
+    if 'val_loss=' not in name:
+        return float('inf')
+    try:
+        # Take the part after the LAST 'val_loss=' — handles double-prefix correctly
+        return float(name.split('val_loss=')[-1])
+    except ValueError:
+        return float('inf')
+
+
+def _find_best_checkpoint_globally(config: dict[str, Any]) -> Path:
+    """
+    Scan ALL run folders under models/runs/ and return the single checkpoint
+    with the lowest val_loss embedded in its filename.
+
+    Falls back to the most-recent last.ckpt if no val_loss-named file exists.
+    """
+    checkpoints_dir = (
+        Path(config['data']['models_root'])
+        / config['data']['models_checkpoints_dir'].replace('models/', '').rstrip('/')
+    )
+    if not checkpoints_dir.exists():
+        raise FileNotFoundError(f"Runs directory not found: {checkpoints_dir}")
+
+    # Gather every epoch=*.ckpt across all run sub-folders
+    all_ckpts = list(checkpoints_dir.rglob('epoch=*.ckpt'))
+
+    if not all_ckpts:
+        # No named checkpoints at all — fall back to most-recent last.ckpt
+        last_ckpts = sorted(
+            checkpoints_dir.rglob('last.ckpt'),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        if last_ckpts:
+            print(f"[TEST] No epoch=*.ckpt files found; falling back to: {last_ckpts[0]}")
+            return last_ckpts[0]
+        raise FileNotFoundError(f"No checkpoints found anywhere under {checkpoints_dir}")
+
+    # Sort by parsed val_loss ascending — lowest = best
+    all_ckpts.sort(key=_parse_val_loss_from_filename)
+    best = all_ckpts[0]
+    best_loss = _parse_val_loss_from_filename(best)
+
+    print(f"[TEST] Scanned {len(all_ckpts)} checkpoint(s) across all runs.")
+    print(f"[TEST] Best checkpoint: {best.name}  (val_loss={best_loss:.4f})")
+    return best
+
+
 def _select_checkpoint(config: dict[str, Any], run_id: str, checkpoint_name: str | None = None) -> Path:
-    """Pick the checkpoint to evaluate from a run folder."""
-    checkpoints_dir = Path(config['data']['models_root']) / config['data']['models_checkpoints_dir'].replace('models/', '').rstrip('/')
+    """Pick the best checkpoint from a specific run folder."""
+    checkpoints_dir = (
+        Path(config['data']['models_root'])
+        / config['data']['models_checkpoints_dir'].replace('models/', '').rstrip('/')
+    )
     run_dir = checkpoints_dir / run_id
+
     if checkpoint_name is not None:
         checkpoint_path = run_dir / checkpoint_name
         if not checkpoint_path.exists():
             raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
         return checkpoint_path
 
-    candidate_files = sorted(run_dir.glob("epoch=*.ckpt"))
+    candidate_files = list(run_dir.glob('epoch=*.ckpt'))
     if not candidate_files:
-        last_ckpt = run_dir / "last.ckpt"
+        last_ckpt = run_dir / 'last.ckpt'
         if last_ckpt.exists():
             return last_ckpt
         raise FileNotFoundError(f"No checkpoint files found in {run_dir}")
 
-    # Prefer the checkpoint with the lowest validation loss in the filename.
-    def sort_key(path: Path) -> float:
-        name = path.name
-        if "val_loss=" in name:
-            try:
-                return float(name.split("val_loss=")[-1].replace(".ckpt", ""))
-            except ValueError:
-                return float("inf")
-        return float("inf")
-
-    candidate_files = sorted(candidate_files, key=sort_key)
-    return candidate_files[0]
+    # Sort by val_loss ascending — pick the lowest
+    candidate_files.sort(key=_parse_val_loss_from_filename)
+    best = candidate_files[0]
+    print(f"[TEST] Best in run '{run_id}': {best.name}  (val_loss={_parse_val_loss_from_filename(best):.4f})")
+    return best
 
 
 def _build_model(config: dict[str, Any], train_dataset) -> TemporalFusionTransformer:
@@ -106,16 +161,30 @@ def _metrics_from_predictions(actual: np.ndarray, p50: np.ndarray) -> dict[str, 
 
 def run_test_pipeline(
     config_path: str = "config/config.yaml",
-    run_id: str = "20260408_070201",
+    run_id: str | None = None,
     checkpoint_name: str | None = None,
 ) -> dict[str, Any]:
-    """Evaluate the chosen checkpoint on the held-out test horizon and persist outputs."""
+    """
+    Evaluate the best checkpoint on the held-out test horizon and persist outputs.
+
+    Checkpoint selection priority:
+      1. checkpoint_name given  →  load that exact file from run_id's folder
+      2. run_id given           →  pick the lowest val_loss file in that run's folder
+      3. neither given          →  scan ALL runs and pick the globally lowest val_loss
+    """
     config = load_config(config_path)
     _register_safe_globals_for_checkpoint_resume()
 
-    print(f"[TEST] Using run: {run_id}")
-    checkpoint_path = _select_checkpoint(config, run_id, checkpoint_name)
-    print(f"[TEST] Using checkpoint: {checkpoint_path}")
+    if run_id is not None:
+        print(f"[TEST] Targeting run: {run_id}")
+        checkpoint_path = _select_checkpoint(config, run_id, checkpoint_name)
+    else:
+        print("[TEST] No run_id specified — scanning all runs for global best checkpoint...")
+        checkpoint_path = _find_best_checkpoint_globally(config)
+        # Infer run_id from the checkpoint's parent directory name
+        run_id = checkpoint_path.parent.name
+
+    print(f"[TEST] Checkpoint: {checkpoint_path}")
 
     train_df, val_df, test_df = _load_training_splits(config)
     train_df = _drop_unused_training_columns(train_df, config)
@@ -203,7 +272,8 @@ def run_test_pipeline(
 
     testing_root = Path(config['data']['models_root']) / 'testing'
     testing_root.mkdir(parents=True, exist_ok=True)
-    output_dir = testing_root / f"{run_id}_epoch1_test"
+    # Use the actual run_id + checkpoint stem so output folders never collide
+    output_dir = testing_root / f"{run_id}_{checkpoint_path.stem}"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     compare_path = output_dir / 'test_predictions_vs_actual.csv'

@@ -9,7 +9,7 @@ import pandas as pd
 import numpy as np
 import torch
 import lightning.pytorch as pl
-from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
+from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint, LearningRateMonitor
 from pathlib import Path
 from typing import Tuple
 
@@ -26,6 +26,53 @@ warnings.filterwarnings(
 )
 
 from src.training.run_manager import TrainingRunManager, find_latest_resumable_run
+
+
+class LRWarmupCallback(pl.Callback):
+    """
+    P1: Linear learning-rate warmup over the first `warmup_epochs` epochs.
+
+    Why this is needed
+    ------------------
+    The TFT's attention layers start with random weights. Applying the full
+    learning rate immediately causes large, noisy gradient steps that push the
+    model into a bad region of the loss surface — this is why val_loss spiked
+    from 96 → 229 in the previous runs despite P0 gradient clipping.
+
+    Strategy
+    --------
+    * Epoch 0 … warmup_epochs-1 : LR grows linearly from `start_lr` → `target_lr`.
+    * Epoch warmup_epochs+        : TFT's built-in ReduceLROnPlateau takes over.
+
+    The callback mutates optimizer param_groups directly so it works transparently
+    with TFT's internal `configure_optimizers()` without subclassing the model.
+    """
+
+    def __init__(self, warmup_epochs: int, start_lr: float, target_lr: float) -> None:
+        super().__init__()
+        self.warmup_epochs = max(1, warmup_epochs)
+        self.start_lr = start_lr
+        self.target_lr = target_lr
+
+    def on_train_epoch_start(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
+        current_epoch = trainer.current_epoch
+        if current_epoch >= self.warmup_epochs:
+            # Warmup complete — ReduceLROnPlateau inside TFT takes over from here.
+            return
+
+        # Linear interpolation: epoch 0 → start_lr, epoch warmup_epochs-1 → target_lr
+        progress = current_epoch / self.warmup_epochs  # 0.0 … <1.0
+        warmup_lr = self.start_lr + progress * (self.target_lr - self.start_lr)
+
+        for optimizer in trainer.optimizers:
+            for pg in optimizer.param_groups:
+                pg["lr"] = warmup_lr
+
+        pl_module.log("warmup_lr", warmup_lr, prog_bar=False)
+        print(f"[WARMUP] Epoch {current_epoch}: LR set to {warmup_lr:.6f} "
+              f"(warmup {current_epoch + 1}/{self.warmup_epochs})")
+
+
 from pytorch_forecasting import TimeSeriesDataSet, TemporalFusionTransformer
 from pytorch_forecasting.metrics import QuantileLoss
 
@@ -196,6 +243,7 @@ def _build_tft_datasets(config: dict, train_df: pd.DataFrame, val_df: pd.DataFra
     return training, val_dataset, test_dataset
 
 
+
 def run_training_pipeline(config_path: str = "config/config.yaml", run_id: str = None):
     """
     Main training pipeline:
@@ -220,7 +268,7 @@ def run_training_pipeline(config_path: str = "config/config.yaml", run_id: str =
     resume_policy = config['training'].get('resume_policy', 'auto')
 
     # Choose run folder: resume latest existing run for auto/require unless explicit run_id is passed.
-    resume_ckpt_path = None
+    resume_ckpt_path = config.get('training', {}).get('resume_ckpt_path', None)
     resolved_run_id = run_id
     if resolved_run_id is None and resume_policy in {'auto', 'require'}:
         latest_run_id, latest_ckpt = find_latest_resumable_run(config)
@@ -303,8 +351,12 @@ def run_training_pipeline(config_path: str = "config/config.yaml", run_id: str =
     # In fp16, very large negative mask bias (e.g. -1e9) can overflow to half.
     # Use a safe magnitude while retaining masking behavior.
     mask_bias = -1.0e4 if '16' in precision_mode else -1.0e9
+    # FIX: reduce_on_plateau_patience=4 was firing too early when gradient_clip=0.1 starved
+    # the model of gradients. With gradient_clip=1.0 and LR=0.001, 8 epochs is safe.
+    plateau_patience = int(config.get('model', {}).get('reduce_on_plateau_patience', 8))
     model = TemporalFusionTransformer.from_dataset(
         train_dataset,
+        learning_rate=config['model']['learning_rate'],
         hidden_size=config['model']['hidden_size'],
         attention_head_size=config['model']['attention_head_size'],
         dropout=config['model']['dropout'],
@@ -313,14 +365,35 @@ def run_training_pipeline(config_path: str = "config/config.yaml", run_id: str =
         loss=QuantileLoss(quantiles=config['model']['quantiles']),
         mask_bias=mask_bias,
         log_interval=10,
-        reduce_on_plateau_patience=4,
+        reduce_on_plateau_patience=plateau_patience,
     )
+    print(f"[MODEL] TFT initialized: hidden_size={config['model']['hidden_size']}, "
+          f"lr={config['model']['learning_rate']}, "
+          f"gradient_clip={config.get('training', {}).get('gradient_clip_val', 1.0)}, "
+          f"plateau_patience={plateau_patience}")
     
     # Callbacks
     early_stopping = EarlyStopping(
         monitor="val_loss",
-        patience=config['training']['early_stopping_patience']
+        patience=config['training']['early_stopping_patience'],
+        mode='min',
     )
+
+    # P1: LR warmup — ramp up linearly for the first N epochs so attention layers
+    # stabilise before the full learning rate is applied.
+    warmup_cfg = config.get('training', {}).get('lr_warmup', {})
+    warmup_epochs = int(warmup_cfg.get('epochs', 5))
+    warmup_start_lr = float(warmup_cfg.get('start_lr', config['model']['learning_rate'] / 10.0))
+    warmup_target_lr = float(config['model']['learning_rate'])
+    lr_warmup_callback = LRWarmupCallback(
+        warmup_epochs=warmup_epochs,
+        start_lr=warmup_start_lr,
+        target_lr=warmup_target_lr,
+    )
+    print(f"[WARMUP] LR warmup configured: {warmup_start_lr:.2e} → {warmup_target_lr:.2e} over {warmup_epochs} epochs")
+
+    # P1: Log LR each epoch — makes warmup curve visible in TensorBoard / CSV logs.
+    lr_monitor = LearningRateMonitor(logging_interval='epoch')
     checkpoint_strategy = config.get('training', {}).get('checkpoint_save_strategy', 'best')
     checkpoint_every_n_epochs = int(config.get('training', {}).get('checkpoint_every_n_epochs', 1))
 
@@ -333,6 +406,7 @@ def run_training_pipeline(config_path: str = "config/config.yaml", run_id: str =
             save_last=True,
             every_n_epochs=checkpoint_every_n_epochs,
         )
+        callbacks_list = [early_stopping, checkpoint_callback, lr_warmup_callback, lr_monitor]
     elif checkpoint_strategy == 'last':
         checkpoint_callback = ModelCheckpoint(
             dirpath=str(run_manager.run_checkpoints_dir),
@@ -340,26 +414,43 @@ def run_training_pipeline(config_path: str = "config/config.yaml", run_id: str =
             save_top_k=0,
             save_last=True,
         )
+        callbacks_list = [early_stopping, checkpoint_callback, lr_warmup_callback, lr_monitor]
     else:
         # Default: keep best + last
-        checkpoint_callback = ModelCheckpoint(
+        # We use two separate ModelCheckpoint callbacks.
+        # The first strictly monitors val_loss to save the single best model.
+        checkpoint_best = ModelCheckpoint(
             dirpath=str(run_manager.run_checkpoints_dir),
             filename='epoch={epoch:02d}-val_loss={val_loss:.2f}',
             save_top_k=1,
             monitor='val_loss',
-            save_last=True,
+            mode='min',
         )
+        checkpoint_callback = checkpoint_best  # Alias for metadata updates
+        # The second strictly saves the last.ckpt at the end of every single epoch
+        # regardless of val_loss improvements, guaranteeing we don't lose epochs again!
+        checkpoint_last = ModelCheckpoint(
+            dirpath=str(run_manager.run_checkpoints_dir),
+            save_top_k=0,
+            save_last=True,
+            every_n_epochs=1,
+        )
+        callbacks_list = [early_stopping, checkpoint_best, checkpoint_last, lr_warmup_callback, lr_monitor]
     
     # Trainer
     trainer = pl.Trainer(
         max_epochs=config['model']['max_epochs'],
-        callbacks=[early_stopping, checkpoint_callback],
+        callbacks=callbacks_list,
         enable_progress_bar=True,
         log_every_n_steps=10,
         precision=config.get('training', {}).get('precision', '32-true'),
         accelerator='gpu' if torch.cuda.is_available() else 'auto',
         devices=1 if torch.cuda.is_available() else 'auto',
         benchmark=bool(config.get('training', {}).get('cudnn_benchmark', True)),
+        # P0: gradient clipping — prevents exploding gradients in TFT attention layers.
+        # val_loss oscillated (96→229→112→197) in prior runs due to unconstrained gradient norms.
+        gradient_clip_val=float(config.get('training', {}).get('gradient_clip_val', 0.1)),
+        gradient_clip_algorithm=config.get('training', {}).get('gradient_clip_algorithm', 'norm'),
     )
     
     # Resolve checkpoint to resume from

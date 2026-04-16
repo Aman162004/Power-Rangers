@@ -1,0 +1,9 @@
+{
+  "MAE": 141.05221130371095,
+  "RMSE": 203.73596069947772,
+  "MAPE": 3.58504077897212,
+  "SMAPE": 3.7048645218824885,
+  "checkpoint_path": "models\\runs\\20260416_162000\\epoch=epoch=05-val_loss=val_loss=167.22.ckpt",
+  "run_id": "20260416_162000",
+  "checkpoint_epoch_loss": NaN
+}

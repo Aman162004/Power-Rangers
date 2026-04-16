@@ -1,0 +1,96 @@
+data:
+  active_model_pointer: models/ACTIVE_MODEL.txt
+  historical_calendar_path: data/historical/raw/calendar/
+  historical_demand_load_path: data/historical/raw/demand_load/
+  historical_feature_engineered_path: data/historical/feature_engineered/
+  historical_final_processed_path: data/historical/final_processed/
+  historical_merged_file: data/historical/raw/electricity_demand_2021-01-01_to_2026-04-06.csv
+  historical_raw_path: data/historical/raw/
+  historical_splits_path: data/historical/final_processed/
+  historical_weather_path: data/historical/raw/weather/
+  models_checkpoints_dir: models/runs/
+  models_config_dir: models/config/
+  models_root: models/
+  operational_processed_path: data/operational/processed/
+  operational_raw_path: data/operational/raw/
+  prep_metadata_path: data/historical/final_processed/prep_metadata.json
+  training_drop_columns:
+  - day_of_year
+  - week_of_year
+  - is_weekend
+  - load_mw_raw
+  - load_outlier_detected
+  training_drop_pattern: .*_was_missing$
+  training_splits:
+    test: test_data.parquet
+    train: train_data.parquet
+    val: val_data.parquet
+features:
+  iqr_multiplier: 2.0
+  lags:
+  - 4
+  - 24
+  - 96
+  - 672
+  rolling_windows:
+  - 4
+  - 24
+ingestion:
+  backoff_factor: 0.3
+  base_csv_path: data/historical/raw/demand_load/powerdemand_5min_2021_to_2024_load_only.csv
+  end_date: '2026-04-13'
+  latitude: 28.6139
+  longitude: 77.209
+  outputs:
+    load_snapshot: data/operational/raw/load_sldc_{start_date}_to_{end_date}.csv
+    manifest: data/operational/raw/ingestion_manifest_{start_date}_to_{end_date}.json
+    merged_snapshot: data/operational/raw/electricity_demand_{start_date}_to_{end_date}.csv
+    weather_snapshot: data/operational/raw/weather_openmeteo_{start_date}_to_{end_date}.csv
+  retry_total: 5
+  sldc_sleep_seconds: 0.4
+  start_date: '2026-04-07'
+  timeout_seconds: 10
+  timezone: Asia/Kolkata
+  weather_cache_path: .cache/openmeteo
+model:
+  attention_head_size: 4
+  batch_size: 128
+  dropout: 0.2
+  hidden_continuous_size: 8
+  hidden_size: 64
+  learning_rate: 0.0001
+  loss: quantile
+  max_epochs: 100
+  output_size: 1
+  quantiles:
+  - 0.1
+  - 0.5
+  - 0.9
+pipeline:
+  decoder_window: 192
+  encoder_window: 336
+  stride: 1
+training:
+  checkpoint_every: 5
+  checkpoint_every_n_epochs: 1
+  checkpoint_save_strategy: best
+  cudnn_benchmark: true
+  cv_tuning:
+    grid:
+      hidden_size:
+      - 64
+      - 128
+    n_splits: 3
+  early_stopping_patience: 20
+  gradient_clip_algorithm: norm
+  gradient_clip_val: 0.1
+  lr_warmup:
+    epochs: 5
+    start_lr: 1.0e-05
+  num_workers: 0
+  persistent_workers: false
+  pin_memory: true
+  precision: 16-mixed
+  prefetch_factor: null
+  resume_policy: scratch
+  resume_weights_only: false

@@ -1,0 +1,342 @@
+Graphs and Plots found in Notebook:
+--- Cell 1 (code) ---
+Code:
+import numpy as np
+import pandas as pd
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+from scipy import stats
+
+from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+from statsmodels.tsa.seasonal import seasonal_decompose
+from statsmodels.tsa.stattools import adfuller
+
+import warnings
+warnings.filterwarnings('ignore')
+
+plt.style.use('seaborn-v0_8-darkgrid')
+sns.set_palette('husl')
+
+--- Cell 2 (code) ---
+Code:
+!mkdir ./plots
+
+--- Cell 11 (markdown) ---
+Context (Previous Markdown):
+### 2.3 Column Type Conversions & Feature Engineering
+
+To facilitate time-series analysis and statistical modeling, the following type conversions were applied:
+
+*   **`timestamp` column:** Initially loaded as an `object` (string). It was parsed into a **`datetime64[ns]`** format using `pd.to_datetime()`. This conversion allowed the column to be set as the DataFrame index and enabled temporal resampling.
+*   **`is_weekend` column:** This binary feature was derived from the day-of-week index and explicitly cast to **`int`** (0 for weekdays, 1 for weekends) for compatibility with correlation analysis and plotting.
+*   **Temporal Components (`year`, `month`, `hour`, etc.):** Extracted from the datetime index and stored as **`int64`** or **`UInt32`** (for week of year) to allow for categorical grouping and seasonal analysis.
+*   **`load_MW` column:** Verified as a **`float64`** numeric type, which is necessary for calculating mean, standard deviation, and performing the Augmented Dickey-Fuller (ADF) test.
+Code:
+### 2.3 Column Type Conversions & Feature Engineering
+
+To facilitate time-series analysis and statistical modeling, the following type conversions were applied:
+
+*   **`timestamp` column:** Initially loaded as an `object` (string). It was parsed into a **`datetime64[ns]`** format using `pd.to_datetime()`. This conversion allowed the column to be set as the DataFrame index and enabled temporal resampling.
+*   **`is_weekend` column:** This binary feature was derived from the day-of-week index and explicitly cast to **`int`** (0 for weekdays, 1 for weekends) for compatibility with correlation analysis and plotting.
+*   **Temporal Components (`year`, `month`, `hour`, etc.):** Extracted from the datetime index and stored as **`int64`** or **`UInt32`** (for week of year) to allow for categorical grouping and seasonal analysis.
+*   **`load_MW` column:** Verified as a **`float64`** numeric type, which is necessary for calculating mean, standard deviation, and performing the Augmented Dickey-Fuller (ADF) test.
+
+--- Cell 28 (code) ---
+Context (Previous Markdown):
+# 5. Visualization
+Code:
+fig, ax = plt.subplots(figsize=(15, 5))
+sns.lineplot(x=df_cpy.index, y=df_cpy['load_MW'], linewidth=0.5, alpha=0.5, ax=ax)
+ax.set_title('Delhi Electricity Load - Complete Time Series', fontsize=14, fontweight='bold')
+plt.tight_layout()
+plt.savefig('./plots/01_complete_timeseries.png', dpi=100, bbox_inches='tight')
+plt.close()
+
+--- Cell 29 (code) ---
+Code:
+# monthly average load
+monthly_avg = df_cpy.groupby([df_cpy.index.year, df_cpy.index.month])['load_MW'].mean()
+monthly_avg.index.names = [None, None]
+monthly_avg = monthly_avg.reset_index()
+monthly_avg.columns = ['year', 'month', 'avg_load']
+
+monthly_avg['date'] = pd.to_datetime(monthly_avg[['year', 'month']].assign(day=1))
+
+fig, ax = plt.subplots(figsize=(15, 5))
+sns.lineplot(x='date', y='avg_load', data=monthly_avg, marker='o', linewidth=2)
+ax.set_title('Monthly Average Electricity Load', fontsize=14, fontweight='bold')
+ax.set_xlabel('Date', fontsize=12)
+ax.set_ylabel('Average Load (MW)', fontsize=12)
+ax.grid(True, alpha=0.3)
+plt.tight_layout()
+plt.savefig('./plots/02_monthly_average.png', dpi=300, bbox_inches='tight')
+plt.show()
+
+--- Cell 30 (code) ---
+Code:
+# distribution of load
+fig, axs = plt.subplots(1, 2, figsize=(15, 5))
+
+sns.histplot(x='load_MW', data=df_cpy, bins=50, edgecolor='black', alpha=0.7, ax=axs[0], color='Dodgerblue')
+axs[0].axvline(df_cpy['load_MW'].mean(), color='red', linestyle='--', linewidth=2, label=f"Mean: {df_cpy['load_MW'].mean():.2f}")
+axs[0].axvline(df_cpy['load_MW'].median(), color='green', linestyle='--', linewidth=2, label=f"Median: {df_cpy['load_MW'].median():.2f}")
+axs[0].set_title('Load Distribution - Historgram', fontsize=12, fontweight='bold')
+axs[0].set_xlabel('Load (MW)', fontsize=11)
+axs[0].set_ylabel('Frequency', fontsize=11)
+axs[0].legend()
+axs[0].grid(True, alpha=0.3)
+
+sns.boxplot(y='load_MW', data=df_cpy, ax=axs[1], color='Dodgerblue')
+axs[1].set_title('Load Distribution - Box Plot', fontsize=12, fontweight='bold')
+axs[1].set_ylabel('Load (MW)', fontsize=11)
+axs[1].grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.savefig('./plots/03_load_distribution.png', dpi=300, bbox_inches='tight')
+plt.show()
+
+--- Cell 31 (code) ---
+Code:
+# hourly pattern (average load by hour of day)
+hourly_pattern = df_cpy.groupby('hour')['load_MW'].agg(['mean', 'std', 'min', 'max'])
+
+fig, ax = plt.subplots(figsize=(15, 6))
+
+sns.lineplot(x=hourly_pattern.index, y=hourly_pattern['mean'], marker='o', linewidth=2, label='Mean', color='steelblue', ax=ax)
+ax.fill_between(hourly_pattern.index,
+                hourly_pattern['mean'] - hourly_pattern['std'],
+                hourly_pattern['mean'] + hourly_pattern['std'],
+                alpha=0.3, label="+-1 Std Dev", color='Coral')
+sns.lineplot(x=hourly_pattern.index, y=hourly_pattern['min'], linestyle='--', alpha=0.5, label='Min', color='green', ax=ax)
+sns.lineplot(x=hourly_pattern.index, y=hourly_pattern['max'], linestyle='--', alpha=0.5, label='Max', color='red', ax=ax)
+
+ax.set_title('Daily Load Pattern - Average by Hour', fontsize=14, fontweight='bold')
+ax.set_xlabel('Hour of Day', fontsize=12)
+ax.set_ylabel('Load (MW)', fontsize=12)
+ax.set_xticks(range(0, 24))
+ax.legend()
+plt.tight_layout()
+plt.savefig('./plots/04_hourly_pattern.png', dpi=300, bbox_inches='tight')
+plt.show()
+
+--- Cell 32 (code) ---
+Code:
+# weekly pattern
+weekly_pattern = df_cpy.groupby('day_of_week')['load_MW'].agg(['mean', 'std'])
+day_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+
+fig, ax = plt.subplots(figsize=(12, 6))
+ax.bar(x=np.arange(7), height=weekly_pattern["mean"].values,
+       yerr=weekly_pattern["std"].values,
+       capsize=5, alpha=0.7, color="dodgerblue")
+ax.set_title('Weekly Load Pattern - Average by Day of Week', fontsize=14, fontweight='bold')
+ax.set_xlabel('Day of Week', fontsize=12)
+ax.set_ylabel('Average Load (MW)', fontsize=12)
+ax.set_xticks(range(7))
+ax.set_xticklabels(day_names, rotation=45)
+ax.grid(True, alpha=0.3, axis='y')
+plt.tight_layout()
+plt.savefig('./plots/05_weekly_pattern.png', dpi=300, bbox_inches='tight')
+plt.show()
+
+--- Cell 33 (code) ---
+Code:
+# seasonal pattern
+seasonal_pattern = df_cpy.groupby('season')['load_MW'].agg(['mean', 'std', 'count'])
+season_order = ['Winter', 'Summer', 'Monsoon', 'Post-Monsoon']
+seasonal_pattern = seasonal_pattern.reindex(season_order)
+
+fig, ax = plt.subplots(figsize=(12, 6))
+ax.bar(x=seasonal_pattern.index, height=seasonal_pattern['mean'].values,
+            yerr=seasonal_pattern['std'].values, capsize=5, alpha=0.7, color='coral')
+ax.set_title('Seasonal Load Pattern', fontsize=14, fontweight='bold')
+ax.set_xlabel('Season', fontsize=12)
+ax.set_ylabel('Average Load (MW)', fontsize=12)
+ax.grid(True, alpha=0.3, axis='y')
+plt.tight_layout()
+plt.savefig('./plots/06_seasonal_pattern.png', dpi=300, bbox_inches='tight')
+plt.show()
+
+--- Cell 34 (code) ---
+Code:
+# weekday vs weekend
+weekend_comparison = df_cpy.groupby('is_weekend')['load_MW'].agg(['mean', 'std'])
+labels = ['Weekday', 'Weekend']
+
+# yerr is headache
+fig, ax = plt.subplots(figsize=(10, 6))
+ax.bar(x=labels, height=weekend_comparison['mean'].values,
+       yerr=weekend_comparison['std'].values, capsize=5, alpha=0.7, color=['coral', 'dodgerblue'])
+ax.set_title('Weekday vs Weekend Load Comparison', fontsize=14, fontweight='bold')
+ax.set_ylabel('Average Load (MW)', fontsize=12)
+ax.grid(True, alpha=0.3, axis='y')
+plt.tight_layout()
+plt.savefig('./plots/07_weekday_vs_weekend.png', dpi=300, bbox_inches='tight')
+plt.show()
+
+
+--- Cell 35 (code) ---
+Code:
+# hour vs day-of-week heatmap
+
+pivot_hourly_daily = df_cpy.groupby(['day_of_week', 'hour'])['load_MW'].mean().unstack()
+
+fig, ax = plt.subplots(figsize=(15, 8))
+sns.heatmap(pivot_hourly_daily, cmap='YlOrRd', annot=False, fmt='.0f',
+            cbar_kws={'label': 'Average Load (MW)'}, ax=ax)
+ax.set_title('Load Heatmap - Hour vs Day of Week', fontsize=14, fontweight='bold')
+ax.set_xlabel('Hour of Day', fontsize=12)
+ax.set_ylabel('Day of Week', fontsize=12)
+ax.set_yticklabels(day_names, rotation=0)
+plt.tight_layout()
+plt.savefig('./plots/08_heatmap_hour_day.png', dpi=300, bbox_inches='tight')
+plt.show()
+
+--- Cell 36 (code) ---
+Code:
+# monthly heatmap
+pivot_monthly = df_cpy.groupby([df_cpy.index.year, df_cpy.index.month])['load_MW'].mean().unstack()
+month_names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+fig, ax = plt.subplots(figsize=(14, 6))
+sns.heatmap(pivot_monthly, cmap='YlOrRd', annot=True, fmt='.0f',
+            cbar_kws={'label': 'Average Load (MW)'}, ax=ax)
+ax.set_title('Average Load by Year and Month', fontsize=14, fontweight='bold')
+ax.set_xlabel('Month', fontsize=12)
+ax.set_ylabel('Year', fontsize=12)
+ax.set_xticklabels(month_names)
+plt.tight_layout()
+plt.savefig('./plots/09_heatmap_year_month.png', dpi=300, bbox_inches='tight')
+plt.show()
+
+--- Cell 37 (code) ---
+Code:
+# load by time of day
+
+time_of_day_pattern = df_cpy.groupby('time_of_day')['load_MW'].agg(['mean', 'std'])
+time_order = ['Night', 'Morning', 'Afternoon', 'Evening']
+time_of_day_pattern = time_of_day_pattern.reindex(time_order)
+
+fig, ax = plt.subplots(figsize=(12, 6))
+ax.bar(x=time_of_day_pattern.index, height=time_of_day_pattern['mean'].values,
+            yerr=time_of_day_pattern['std'].values, capsize=5, alpha=0.7, color='Coral')
+ax.set_title('Load Pattern by Time of Day', fontsize=14, fontweight='bold')
+ax.set_xlabel('Time of Day', fontsize=12)
+ax.set_ylabel('Average Load (M@)', fontsize=12)
+ax.grid(True, alpha=0.3, axis='y')
+plt.tight_layout()
+plt.savefig('./plots/10_time_of_day_pattern.png', dpi=300, bbox_inches='tight')
+plt.show()
+
+--- Cell 39 (code) ---
+Context (Previous Markdown):
+# 6. Autocorrelation Analysis
+Code:
+# hourly_data for speed
+df_cp_cpy = df_cpy.copy()
+df_cp_cpy = df_cp_cpy.fillna(method='ffill')
+sample_data = df_cp_cpy['load_MW'].resample('1H').mean()
+
+# try ffill & add is_missing column to first copied dataframe
+
+fig, axs = plt.subplots(2, 1, figsize=(15, 10))
+
+plot_acf(sample_data, lags=168, ax=axs[0]) # 1 week of hourly data
+axs[0].set_title('Autocorrelation Function (ACF) - Hourly Data', fontsize=14, fontweight='bold')
+axs[0].set_xlabel('Lag (hours)', fontsize=12)
+
+plot_pacf(sample_data, lags=168, ax=axs[1])
+axs[1].set_title('Partial Autocorrelation Function (PACF) - Hourly Data', fontsize=14, fontweight='bold')
+axs[1].set_xlabel('Lag (hours)', fontsize=12)
+
+plt.tight_layout()
+plt.savefig('./plots/11_acf_pacf.png', dpi=300, bbox_inches='tight')
+plt.show()
+
+--- Cell 41 (code) ---
+Context (Previous Markdown):
+# 7. Trend & Seasonality Decomposition
+Code:
+# using daily data
+daily_data = df_cpy['load_MW'].resample('D').mean()
+daily_data = daily_data.fillna(daily_data.mean())
+
+decomposition = seasonal_decompose(daily_data, model='additive', period=7)
+
+fig, axs = plt.subplots(4, 1, figsize=(15, 12))
+
+axs[0].plot(decomposition.observed, linewidth=1)
+axs[0].set_title('Original Time Series (Daily Average)', fontsize=12, fontweight='bold')
+axs[0].set_ylabel('Load (MW)')
+axs[0].grid(True, alpha=0.3)
+
+axs[1].plot(decomposition.trend, linewidth=2, color='orange')
+axs[1].set_title('Trend Component', fontsize=12, fontweight='bold')
+axs[1].set_ylabel('Load (MW)')
+axs[1].grid(True, alpha=0.3)
+
+axs[2].plot(decomposition.seasonal, linewidth=1, color='green')
+axs[2].set_title('Seasonal Component (Weekly)', fontsize=12, fontweight='bold')
+axs[2].set_ylabel('Load (MW)')
+axs[2].grid(True, alpha=0.3)
+
+axs[3].plot(decomposition.resid, linewidth=0.5, color='red')
+axs[3].set_title('Residual Component', fontsize=12, fontweight='bold')
+axs[3].set_ylabel('Load (MW)')
+axs[3].grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.savefig('./plots/12_decomposition.png', dpi=300, bbox_inches='tight')
+plt.show()
+
+
+--- Cell 49 (code) ---
+Context (Previous Markdown):
+# 9. Key Insights & Summary
+Code:
+import os
+from fpdf import FPDF
+
+def generate_final_report(df_processed, plot_dir='/content/plots/', output_filename='Delhi_Load_Final_Report.pdf'):
+    # Basic checks to ensure directory exists
+    if not os.path.exists(plot_dir):
+        print(f"Error: {plot_dir} not found. Please run the visualization cells first.")
+        return
+
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+
+    # Title Page
+    pdf.add_page()
+    pdf.set_font('Arial', 'B', 16)
+    pdf.cell(0, 20, 'Delhi Electricity Load Infrastructure Analysis', 0, 1, 'C')
+
+    pdf.set_font('Arial', '', 12)
+    stats = df_processed['load_MW'].describe()
+    pdf.cell(0, 10, f"Analysis Period Data Points: {len(df_processed):,}", 0, 1)
+    pdf.cell(0, 10, f"Average Demand: {stats['mean']:.2f} MW", 0, 1)
+    pdf.cell(0, 10, f"Maximum Recorded Peak: {stats['max']:.2f} MW", 0, 1)
+    pdf.ln(10)
+
+    # Fetch existing plots
+    plot_files = sorted([f for f in os.listdir(plot_dir) if f.endswith('.png')])
+
+    if not plot_files:
+        print("No images found in the plots directory.")
+        return
+
+    # Append images to PDF
+    for i, plot_file in enumerate(plot_files):
+        pdf.add_page()
+        pdf.set_font('Arial', 'I', 10)
+        pdf.cell(0, 10, f"Figure {i+1}: {plot_file.replace('_', ' ').title()}", 0, 1)
+        # Use absolute path to ensure fpdf finds the files
+        img_path = os.path.join(plot_dir, plot_file)
+        pdf.image(img_path, x=10, y=30, w=190)
+
+    pdf.output(output_filename)
+    print(f"Success! Report generated using existing plots: {output_filename}")
+
+generate_final_report(df_cpy)
+
