@@ -16,6 +16,8 @@ sys.path.append(str(project_root))
 
 from src.ingestion.load_fetcher import fetch_sldc_load_data
 from src.forecast.tft_inference import run_tft_inference
+from src.forecast.fallback_data import load_dummy_forecast_data
+from src.shared.config import ENABLE_DUMMY_FALLBACK
 from src.auth.routes import router as auth_router
 
 # Suppress TFT inference warnings during operation
@@ -155,6 +157,9 @@ def fetch_and_predict(
     except HTTPException:
         raise
     except Exception as e:
+        if ENABLE_DUMMY_FALLBACK:
+            logger.warning(f"Forecast generation failed, returning dummy data: {e}")
+            return load_dummy_forecast_data()
         logger.exception("Forecast request failed")
         raise HTTPException(status_code=500, detail="Forecast generation failed. Check server logs.") from e
 
