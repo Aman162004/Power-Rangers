@@ -1,0 +1,10 @@
+Run ID: 20260408_070201
+Checkpoint: models/runs/20260408_070201/epoch=epoch=01-val_loss=val_loss=96.36.ckpt
+Rows evaluated: 192
+MAE: 302.9477
+RMSE: 388.3739
+MAPE: 8.1170%
+SMAPE: 8.6452%
+Peak forecast: 4085.9590 MW
+Peak time: 2026-04-05 16:30:00
+Actual at peak time: 3891.9900 MW

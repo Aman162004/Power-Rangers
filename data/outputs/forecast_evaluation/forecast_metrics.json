@@ -1,0 +1,18 @@
+{
+  "checkpoint_path": "D:\\Code_Work\\Power-Rangers\\models\\final model\\epoch=epoch=01-val_loss=val_loss=96.36.ckpt",
+  "source_evaluation_run": "D:\\Code_Work\\Power-Rangers\\models\\testing\\20260408_070201_epoch1_test",
+  "rows_evaluated": 192,
+  "MAE": 302.94765659722225,
+  "RMSE": 388.3738766835382,
+  "MAPE": 8.116966654010655,
+  "SMAPE": 8.645157289007594,
+  "saved_metrics_snapshot": {
+    "MAE": 302.94765302870013,
+    "RMSE": 388.3738717497957,
+    "MAPE": 8.1169665572688,
+    "SMAPE": 8.645157181642304,
+    "checkpoint_path": "models/runs/20260408_070201/epoch=epoch=01-val_loss=val_loss=96.36.ckpt",
+    "run_id": "20260408_070201",
+    "checkpoint_epoch_loss": NaN
+  }
+}

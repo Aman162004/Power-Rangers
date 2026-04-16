@@ -1,0 +1,16 @@
+Project Validation Summary
+Final checkpoint: D:\Code_Work\Power-Rangers\models\final model\epoch=epoch=01-val_loss=val_loss=96.36.ckpt
+Evaluation source run: D:\Code_Work\Power-Rangers\models\testing\20260408_070201_epoch1_test
+Rows evaluated: 192
+MAE: 302.9477
+RMSE: 388.3739
+MAPE: 8.1170%
+
+Checks:
+Checkpoint exists: PASS
+Source evaluation run exists: PASS
+Source prediction file exists: PASS
+Historical test data exists: PASS
+Evaluation row count > 0: PASS
+Peak detected: PASS
+Direct checkpoint replay in current shell: BLOCKED (torch is not installed in this Python environment)
