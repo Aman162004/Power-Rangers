@@ -11,7 +11,7 @@ import torch
 import lightning.pytorch as pl
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 from pathlib import Path
-from typing import Tuple
+from typing import Optional, Tuple
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
@@ -108,6 +108,100 @@ def _load_training_splits(config: dict) -> Tuple[pd.DataFrame, pd.DataFrame, pd.
     test_df = pd.read_parquet(split_files['test'])
     
     return train_df, val_df, test_df
+
+
+def _get_models_root(config: dict) -> Path:
+    models_root = Path(config['data']['models_root'])
+    if not models_root.is_absolute():
+        models_root = PROJECT_ROOT / models_root
+    return models_root
+
+
+def _get_run_checkpoints_dir(config: dict) -> Path:
+    return _get_models_root(config) / config['data']['models_checkpoints_dir'].replace('models/', '').rstrip('/')
+
+
+def _extract_checkpoint_epoch(checkpoint_path: Path) -> int:
+    match = re.search(r'epoch=(?:epoch=)?(\d+)', checkpoint_path.name)
+    return int(match.group(1)) if match else -1
+
+
+def _is_epoch_zero_checkpoint(checkpoint_path: Path) -> bool:
+    return bool(re.search(r'epoch=(?:epoch=)?0{1,2}(?:-|\.|$)', checkpoint_path.name))
+
+
+def _select_resume_checkpoint_from_run(run_dir: Path) -> Optional[Path]:
+    last_ckpt = run_dir / 'last.ckpt'
+    if last_ckpt.exists():
+        return last_ckpt
+
+    candidate_files = [path for path in run_dir.glob('*.ckpt') if path.is_file()]
+    if not candidate_files:
+        return None
+
+    return max(candidate_files, key=lambda path: (_extract_checkpoint_epoch(path), path.stat().st_mtime))
+
+
+def _find_epoch_zero_runs(config: dict) -> list[tuple[str, Path]]:
+    checkpoints_dir = _get_run_checkpoints_dir(config)
+    if not checkpoints_dir.exists():
+        return []
+
+    runs: list[tuple[str, Path]] = []
+    for run_dir in sorted((path for path in checkpoints_dir.iterdir() if path.is_dir()), key=lambda path: path.name, reverse=True):
+        if any(_is_epoch_zero_checkpoint(path) for path in run_dir.glob('*.ckpt')):
+            runs.append((run_dir.name, run_dir))
+    return runs
+
+
+def _prompt_for_training_start(config: dict) -> tuple[Optional[str], Optional[Path]]:
+    while True:
+        print("[START] What do you want to do?")
+        print("  1. Continue training from the last session using the last checkpoint")
+        print("  2. Continue training from a specific session")
+        print("  3. Start a new training session from scratch")
+
+        choice = input("Select an option (1/2/3): ").strip()
+
+        if choice == '1':
+            latest_run_id, latest_ckpt = find_latest_resumable_run(config)
+            if latest_run_id is None or latest_ckpt is None:
+                print("[START] No session with last.ckpt was found. Choose another option.")
+                continue
+            return latest_run_id, latest_ckpt
+
+        if choice == '2':
+            eligible_runs = _find_epoch_zero_runs(config)
+            if not eligible_runs:
+                print("[START] No sessions with an epoch-0 checkpoint were found. Choose another option.")
+                continue
+
+            print("[START] Available sessions:")
+            for index, (run_id, _) in enumerate(eligible_runs, start=1):
+                print(f"  {index}. {run_id}")
+
+            selected_index = input("Enter the session index to continue: ").strip()
+            if not selected_index.isdigit():
+                print("[START] Invalid index. Try again.")
+                continue
+
+            selection = int(selected_index)
+            if selection < 1 or selection > len(eligible_runs):
+                print("[START] Invalid index. Try again.")
+                continue
+
+            run_id, run_dir = eligible_runs[selection - 1]
+            checkpoint_path = _select_resume_checkpoint_from_run(run_dir)
+            if checkpoint_path is None:
+                print("[START] No checkpoint files were found in that session. Try again.")
+                continue
+
+            return run_id, checkpoint_path
+
+        if choice == '3':
+            return None, None
+
+        print("[START] Invalid choice. Please enter 1, 2, or 3.")
 
 
 def _drop_unused_training_columns(df: pd.DataFrame, config: dict) -> pd.DataFrame:
@@ -218,13 +312,29 @@ def run_training_pipeline(config_path: str = "config/config.yaml", run_id: str =
         torch.set_float32_matmul_precision("medium")
         if config.get("training", {}).get("cudnn_benchmark", True):
             torch.backends.cudnn.benchmark = True
-    
-    resume_policy = config['training'].get('resume_policy', 'auto')
 
-    # Choose run folder: resume latest existing run for auto/require unless explicit run_id is passed.
-    resume_ckpt_path = None
+    resume_policy = config['training'].get('resume_policy', 'auto')
+    interactive_mode = sys.stdin.isatty()
+
+    # Choose the training start mode interactively when possible.
+    resume_ckpt_path: Optional[str] = None
     resolved_run_id = run_id
-    if resolved_run_id is None and resume_policy in {'auto', 'require'}:
+    if resolved_run_id is not None:
+        selected_checkpoint = _select_resume_checkpoint_from_run(_get_run_checkpoints_dir(config) / resolved_run_id)
+        if selected_checkpoint is not None:
+            resume_ckpt_path = str(selected_checkpoint)
+            print(f"[RUN] Resuming requested run: {resolved_run_id}")
+        else:
+            print(f"[RUN] Requested run has no checkpoint yet: {resolved_run_id}")
+    elif interactive_mode:
+        resolved_run_id, selected_checkpoint = _prompt_for_training_start(config)
+        if selected_checkpoint is not None:
+            resume_ckpt_path = str(selected_checkpoint)
+            if resolved_run_id is not None:
+                print(f"[RUN] Resuming selected run: {resolved_run_id}")
+            else:
+                print("[RUN] Starting a brand new run from scratch")
+    elif resume_policy in {'auto', 'require'}:
         latest_run_id, latest_ckpt = find_latest_resumable_run(config)
         if latest_run_id is not None and latest_ckpt is not None:
             resolved_run_id = latest_run_id
