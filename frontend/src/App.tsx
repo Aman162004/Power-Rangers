@@ -53,7 +53,8 @@ export default function App() {
   const [peak, setPeak] = useState<Peak | null>(null);
   const [points, setPoints] = useState<Point[]>([]);
   const [selectedDate, setSelectedDate] = useState<string>(toLocalDateInput(new Date()));
-  const [temperatureDeltaC, setTemperatureDeltaC] = useState<number>(0);
+  const [actualTempC, setActualTempC] = useState<number>(25);
+  const [inputTempStr, setInputTempStr] = useState<string>("25");
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -134,8 +135,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    void loadAnalytics(selectedDate, temperatureDeltaC);
-  }, [loadAnalytics, selectedDate, temperatureDeltaC]);
+    void loadAnalytics(selectedDate, actualTempC - 25);
+  }, [loadAnalytics, selectedDate, actualTempC]);
 
   const sectionCopy = useMemo(
     () => ({
@@ -280,26 +281,54 @@ export default function App() {
                   className="mt-1 block rounded-md border border-white/15 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-cyan-300"
                 />
               </label>
-              <label className="min-w-[220px] flex-1 text-xs text-slate-400">
-                Temperature adjustment ({temperatureDeltaC > 0 ? `+${temperatureDeltaC}` : temperatureDeltaC} C)
-                <input
-                  type="range"
-                  min={-5}
-                  max={5}
-                  step={1}
-                  value={temperatureDeltaC}
-                  onChange={(e) => setTemperatureDeltaC(Number(e.target.value))}
-                  className="mt-2 w-full accent-cyan-300"
-                />
-                <div className="mt-1 flex justify-between text-[10px] text-slate-500">
-                  <span>-5 C cooler case</span>
-                  <span>0 C base</span>
-                  <span>+5 C hotter case</span>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs text-slate-400">Current temperature</span>
+                <div className="flex items-center gap-2">
+                  <div className="relative flex items-center">
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="e.g. 32"
+                      value={inputTempStr}
+                      onChange={(e) => setInputTempStr(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key !== "Enter") return;
+                        const parsed = parseFloat(inputTempStr);
+                        if (!isNaN(parsed)) setActualTempC(parsed);
+                      }}
+                      className={`w-24 rounded-md border bg-slate-900 py-2 pl-3 pr-8 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 ${
+                        inputTempStr === ""
+                          ? "border-white/15 focus:border-cyan-300"
+                          : isNaN(parseFloat(inputTempStr))
+                          ? "border-rose-500/60 focus:border-rose-500"
+                          : parseFloat(inputTempStr) !== actualTempC
+                          ? "border-amber-400/60 focus:border-amber-400"
+                          : "border-cyan-300/30 focus:border-cyan-300"
+                      }`}
+                    />
+                    <span className="pointer-events-none absolute right-2 text-xs text-slate-400">°C</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const parsed = parseFloat(inputTempStr);
+                      if (!isNaN(parsed)) setActualTempC(parsed);
+                    }}
+                    disabled={isNaN(parseFloat(inputTempStr)) || parseFloat(inputTempStr) === actualTempC || isLoading}
+                    className="rounded-md border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-xs font-medium text-emerald-300 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Confirm
+                  </button>
                 </div>
-              </label>
+                {isNaN(parseFloat(inputTempStr)) && inputTempStr !== "" ? (
+                  <p className="text-[10px] text-rose-400/80">Enter a valid number</p>
+                ) : parseFloat(inputTempStr) !== actualTempC && inputTempStr !== "" ? (
+                  <p className="text-[10px] text-amber-400/80">Press Confirm or Enter to apply</p>
+                ) : null}
+              </div>
               <button
                 type="button"
-                onClick={() => void loadAnalytics(selectedDate, temperatureDeltaC)}
+                onClick={() => void loadAnalytics(selectedDate, actualTempC - 25)}
                 disabled={isLoading}
                 className="rounded-md border border-cyan-300/25 bg-cyan-500/10 px-4 py-2 text-sm text-cyan-200 transition hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-60"
               >
@@ -313,7 +342,7 @@ export default function App() {
             <div className="mt-4 flex flex-wrap gap-2 text-xs">
               <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-3 py-1 text-cyan-200">success</span>
               <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-300">24h horizon</span>
-              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-300">Avg temp 12.6 C</span>
+              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-300">Current temp {actualTempC} °C</span>
             </div>
 
             <div className="mt-6 grid gap-4 md:grid-cols-4">

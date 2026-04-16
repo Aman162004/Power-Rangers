@@ -59,14 +59,14 @@ Thumbs.db
 # Project Artifacts (Nested & Root)
 # ============================================
 # Models & Checkpoints
-backend/checkpoints/
-backend/models/*
-*.ckpt
-!backend/models/tft_delhi_v1.ckpt
-models/*
-!models/final model/
-!models/final model/**
-!models/final model/*.ckpt
+# backend/checkpoints/
+# backend/models/*
+# *.ckpt
+# !backend/models/tft_delhi_v1.ckpt
+# models/*
+# !models/final model/
+# !models/final model/**
+# !models/final model/*.ckpt
 
 # Frontend dependencies and build output
 frontend/node_modules/
@@ -89,15 +89,15 @@ coverage/
 out/
 
 # Data & Logs
-backend/data/*
-!backend/data/training_data.parquet
-!backend/data/todays_forecast.json
-data/outputs/
-data/raw/electricity_demand.csv
-data/training_data.parquet
-data/todays_forecast.json
-data/historical/
-data/operational/
+# backend/data/*
+# !backend/data/training_data.parquet
+# !backend/data/todays_forecast.json
+# data/outputs/
+# data/raw/electricity_demand.csv
+# data/training_data.parquet
+# data/todays_forecast.json
+# data/historical/
+# data/operational/
 lightning_logs/
 research_and_tools/logs/
 
