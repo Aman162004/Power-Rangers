@@ -42,9 +42,35 @@ def _safe_load_checkpoint(checkpoint_path: Path) -> dict[str, Any]:
     return torch.load(checkpoint_path, map_location="cpu", weights_only=False)
 
 
-def _select_checkpoint(config: dict[str, Any], run_id: str, checkpoint_name: str | None = None) -> Path:
-    """Pick the checkpoint to evaluate from a run folder."""
-    checkpoints_dir = Path(config['data']['models_root']) / config['data']['models_checkpoints_dir'].replace('models/', '').rstrip('/')
+def _select_checkpoint(config: dict[str, Any], run_id: str | None, checkpoint_name: str | None = None) -> Path:
+    """Pick the checkpoint to evaluate from a run folder or the final model directory."""
+    models_root = Path(config.get("data", {}).get("models_root", "models"))
+    if not models_root.is_absolute():
+        models_root = PROJECT_ROOT / models_root
+
+    # 1. Highest priority: any checkpoint placed in models/final model/
+    final_model_dir = models_root / "final model"
+    if final_model_dir.exists():
+        candidates = sorted(final_model_dir.glob("*.ckpt"))
+        if candidates:
+            p = candidates[-1]
+            print(f"[TEST] Auto-selected checkpoint from final model folder: {p.name}")
+            return p
+
+    # 2. Check if config has best_model_path set
+    best_model_path = config.get("data", {}).get("best_model_path")
+    if best_model_path and not checkpoint_name:
+        p = Path(best_model_path)
+        if not p.is_absolute():
+            p = PROJECT_ROOT / p
+        if p.exists():
+            return p
+
+    if run_id is None:
+        raise ValueError("No checkpoint found in 'final model', config 'best_model_path', and no run_id provided.")
+
+    # models_checkpoints_dir is 'models/runs/' — resolve relative to PROJECT_ROOT
+    checkpoints_dir = PROJECT_ROOT / config['data']['models_checkpoints_dir']
     run_dir = checkpoints_dir / run_id
     if checkpoint_name is not None:
         checkpoint_path = run_dir / checkpoint_name
@@ -106,7 +132,7 @@ def _metrics_from_predictions(actual: np.ndarray, p50: np.ndarray) -> dict[str, 
 
 def run_test_pipeline(
     config_path: str = "config/config.yaml",
-    run_id: str = "20260408_070201",
+    run_id: str | None = None,
     checkpoint_name: str | None = None,
 ) -> dict[str, Any]:
     """Evaluate the chosen checkpoint on the held-out test horizon and persist outputs."""
@@ -121,6 +147,12 @@ def run_test_pipeline(
     train_df = _drop_unused_training_columns(train_df, config)
     val_df = _drop_unused_training_columns(val_df, config)
     test_df = _drop_unused_training_columns(test_df, config)
+
+    # Patch lag/rolling columns that the data pipeline may be missing (e.g. lag_672)
+    from src.forecast.tft_inference import _ensure_lag_columns
+    train_df = _ensure_lag_columns(train_df, config)
+    val_df   = _ensure_lag_columns(val_df,   config)
+    test_df  = _ensure_lag_columns(test_df,  config)
 
     train_dataset, val_dataset, test_dataset = _build_tft_datasets(config, train_df, val_df, test_df)
 
@@ -201,9 +233,10 @@ def run_test_pipeline(
     compare_df['abs_error_p50'] = np.abs(compare_df['error_p50'])
     compare_df['ape_p50'] = np.abs(compare_df['error_p50'] / np.clip(compare_df['actual_load_mw'], 1e-6, None)) * 100
 
-    testing_root = Path(config['data']['models_root']) / 'testing'
+    testing_root = PROJECT_ROOT / config['data']['models_root'] / 'testing'
     testing_root.mkdir(parents=True, exist_ok=True)
-    output_dir = testing_root / f"{run_id}_epoch1_test"
+    out_name = f"{run_id}_test" if run_id else "final_model_test"
+    output_dir = testing_root / out_name
     output_dir.mkdir(parents=True, exist_ok=True)
 
     compare_path = output_dir / 'test_predictions_vs_actual.csv'

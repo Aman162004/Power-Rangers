@@ -83,22 +83,40 @@ def _register_safe_globals() -> None:
 
 
 def _find_latest_checkpoint(config: dict) -> Path:
-    """Find the latest checkpoint in models/ directory."""
+    """Resolve best checkpoint: prefer models/final model/, then best_model_path, then runs/ by val_loss."""
     models_root = Path(config.get("data", {}).get("models_root", "models"))
     if not models_root.is_absolute():
         models_root = PROJECT_ROOT / models_root
-    
-    # Check final model directory first
+
+    # 1. Highest priority: any checkpoint placed in models/final model/
     final_model_dir = models_root / "final model"
     if final_model_dir.exists():
         candidates = sorted(final_model_dir.glob("*.ckpt"))
         if candidates:
-            return candidates[-1]
-    
-    # Fall back to runs directory - pick checkpoint with lowest val loss
+            p = candidates[-1]
+            print(f"[TFT] Auto-selected checkpoint from final model folder: {p.name}")
+            return p
+
+    # 2. Honour explicit best_model_path from config.yaml
+    best_model_path = config.get("data", {}).get("best_model_path")
+    if best_model_path:
+        p = Path(best_model_path)
+        if not p.is_absolute():
+            p = PROJECT_ROOT / p
+        if p.exists():
+            return p
+        print(f"[TFT] WARNING: best_model_path '{p}' not found, falling back to runs/ scan.")
+
+    models_root = Path(config.get("data", {}).get("models_root", "models"))
+    if not models_root.is_absolute():
+        models_root = PROJECT_ROOT / models_root
+
+    # 2. Scan runs/ directory — pick checkpoint with lowest val loss
+    #    Filenames may be 'epoch=epoch=10-val_loss=val_loss=138.47.ckpt'
+    #    so we take the very last token after splitting on 'val_loss='
     runs_dir = models_root / "runs"
     if runs_dir.exists():
-        candidates = sorted(runs_dir.rglob("epoch=*.ckpt"))
+        candidates = [p for p in runs_dir.rglob("epoch=*.ckpt") if "last" not in p.name]
         if candidates:
             def sort_key(p: Path) -> float:
                 try:
@@ -107,8 +125,32 @@ def _find_latest_checkpoint(config: dict) -> Path:
                     return float("inf")
             candidates.sort(key=sort_key)
             return candidates[0]
-    
-    raise FileNotFoundError("No checkpoint found")
+
+    raise FileNotFoundError("No checkpoint found — set data.best_model_path in config.yaml")
+
+
+def _ensure_lag_columns(df: pd.DataFrame, config: dict) -> pd.DataFrame:
+    """Compute any lag/rolling columns that are missing from the prepared parquet splits.
+
+    This handles the case where the data pipeline was run with a smaller set of lags
+    but the model was trained with additional ones (e.g. lag_672).  We recompute from
+    the target column rather than failing with a KeyError inside TimeSeriesDataSet.
+    """
+    df = df.copy().sort_values("time_idx").reset_index(drop=True)
+    cfg_lags = config.get("features", {}).get("lags", [4, 24, 96])
+    cfg_rolling = config.get("features", {}).get("rolling_windows", [4, 24])
+
+    for lag in cfg_lags:
+        col = f"load_lag_{lag}"
+        if col not in df.columns:
+            df[col] = df["load_mw"].shift(lag).ffill().bfill()
+
+    for w in cfg_rolling:
+        col = f"rolling_mean_{w}"
+        if col not in df.columns:
+            df[col] = df["load_mw"].rolling(w, min_periods=1).mean()
+
+    return df
 
 
 def _load_tft_model(checkpoint_path: Path, config: dict) -> TemporalFusionTransformer:
@@ -120,6 +162,12 @@ def _load_tft_model(checkpoint_path: Path, config: dict) -> TemporalFusionTransf
     train_df = _drop_unused_training_columns(train_df, config)
     val_df = _drop_unused_training_columns(val_df, config)
     test_df = _drop_unused_training_columns(test_df, config)
+
+    # Patch any lag/rolling columns that were added to config after the data pipeline ran
+    train_df = _ensure_lag_columns(train_df, config)
+    val_df   = _ensure_lag_columns(val_df,   config)
+    test_df  = _ensure_lag_columns(test_df,  config)
+
     train_dataset, _, _ = _build_tft_datasets(config, train_df, val_df, test_df)
     
     model = TemporalFusionTransformer.from_dataset(
@@ -143,6 +191,7 @@ def run_tft_inference(
     historical_days: int = 7,
     forecast_date: str | None = None,
     load_df: pd.DataFrame | None = None,
+    temperature_delta_c: float = 0.0,
 ) -> pd.DataFrame:
     """Run TFT inference. Raises on failure for graceful backend fallback.
     
@@ -199,9 +248,18 @@ def run_tft_inference(
 
     avg_temperature_c = None
     if not weather_df.empty and "temperature" in weather_df.columns:
-        temperature_series = pd.to_numeric(weather_df["temperature"], errors="coerce").dropna()
-        if not temperature_series.empty:
-            avg_temperature_c = float(temperature_series.mean())
+        temp_df = weather_df.copy()
+        temp_df["timestamp"] = pd.to_datetime(temp_df["timestamp"], errors="coerce")
+        target_eval_date = target_dt.date() if forecast_date else datetime.now().date()
+        target_day_weather = temp_df[temp_df["timestamp"].dt.date == target_eval_date]
+        if not target_day_weather.empty:
+            avg_temperature_c = float(pd.to_numeric(target_day_weather["temperature"], errors="coerce").mean())
+        else:
+            avg_temperature_c = float(pd.to_numeric(temp_df["temperature"], errors="coerce").mean())
+            
+        # Add delta so the frontend displays the exact user-adjusted temperature
+        if avg_temperature_c is not None:
+            avg_temperature_c += temperature_delta_c
     
     # Prepare inference data
     df = load_df.copy()
@@ -233,36 +291,42 @@ def run_tft_inference(
     ind_holidays = holidays_lib.India(years=range(min_year, max_year + 1))
     df["is_holiday"] = df["timestamp"].dt.date.apply(lambda d: int(d in ind_holidays))
     
-    # Lags and rolling means
+    # Lags and rolling means — driven by config so they match training exactly
+    cfg_lags = config.get("features", {}).get("lags", [4, 24, 96])
+    cfg_rolling = config.get("features", {}).get("rolling_windows", [4, 24])
+
     df = df.sort_values("timestamp").reset_index(drop=True)
-    df["load_lag_4"] = df["load_mw"].shift(4)
-    df["load_lag_24"] = df["load_mw"].shift(24)
-    df["load_lag_96"] = df["load_mw"].shift(96)
-    df["rolling_mean_4"] = df["load_mw"].rolling(4, min_periods=1).mean()
-    df["rolling_mean_24"] = df["load_mw"].rolling(24, min_periods=1).mean()
+    for lag in cfg_lags:
+        df[f"load_lag_{lag}"] = df["load_mw"].shift(lag)
+    for w in cfg_rolling:
+        df[f"rolling_mean_{w}"] = df["load_mw"].rolling(w, min_periods=1).mean()
     df = df.ffill().bfill()
     
     # Create inference frame compatible with the training dataset schema.
     df["time_idx"] = range(len(df))
     df["group_id"] = 0
     
+    lag_cols = [f"load_lag_{lag}" for lag in cfg_lags]
+    rolling_cols = [f"rolling_mean_{w}" for w in cfg_rolling]
+
     cols_required = [
         "time_idx", "group_id", "load_mw",
         "hour", "day_of_week", "month", "sin_hour", "cos_hour",
         "temperature", "humidity", "wind_speed", "rainfall", "is_holiday",
-        "load_lag_4", "load_lag_24", "load_lag_96",
-        "rolling_mean_4", "rolling_mean_24"
-    ]
+    ] + lag_cols + rolling_cols
     
     df_inf = df[["timestamp"] + cols_required].copy()
     
     # Get encoder window
     enc_win = config.get("pipeline", {}).get("encoder_window", 24)
     dec_win = config.get("pipeline", {}).get("decoder_window", 192)
-    
-    # Keep at least encoder window plus additional context for stable lag features.
-    history_len = max(enc_win + 96, enc_win)
+
+    # Need at minimum max_lag + enc_win rows so no NaN remains in any lag column
+    max_lag = max(cfg_lags) if cfg_lags else 96
+    history_len = max(max_lag + enc_win, enc_win + 96)
     df_hist = df_inf.iloc[-history_len:].copy()
+    # Re-index time_idx contiguously so pytorch_forecasting doesn't see gaps
+    df_hist["time_idx"] = range(len(df_hist))
     
     # Create future rows
     last_ts = df_inf["timestamp"].iloc[-1]
@@ -284,6 +348,21 @@ def run_tft_inference(
             wind_speed = float(row0.get("wind_speed", df_inf["wind_speed"].iloc[-1]))
             rainfall = float(row0.get("rainfall", df_inf["rainfall"].iloc[-1]))
 
+        # Apply what-if temperature adjustment
+        temperature += temperature_delta_c
+
+        # Fill lag/rolling values for future rows from recent history
+        future_lag_vals = {}
+        for lag in cfg_lags:
+            col = f"load_lag_{lag}"
+            future_lag_vals[col] = (
+                df_inf[col].iloc[-lag:].mean() if len(df_inf) >= lag
+                else df_inf["load_mw"].mean()
+            )
+        for w in cfg_rolling:
+            col = f"rolling_mean_{w}"
+            future_lag_vals[col] = float(df_inf[col].iloc[-1])
+
         future_rows.append({
             "timestamp": ts,
             "time_idx": len(df_inf) - 1 + i,
@@ -299,15 +378,13 @@ def run_tft_inference(
             "wind_speed": wind_speed,
             "rainfall": rainfall,
             "is_holiday": int(ts.date() in india_holidays),
-            "load_lag_4": df_inf["load_lag_4"].iloc[-4:].mean() if len(df_inf) >= 4 else df_inf["load_mw"].mean(),
-            "load_lag_24": df_inf["load_lag_24"].iloc[-24:].mean() if len(df_inf) >= 24 else df_inf["load_mw"].mean(),
-            "load_lag_96": df_inf["load_lag_96"].iloc[-96:].mean() if len(df_inf) >= 96 else df_inf["load_mw"].mean(),
-            "rolling_mean_4": df_inf["rolling_mean_4"].iloc[-1],
-            "rolling_mean_24": df_inf["rolling_mean_24"].iloc[-1],
+            **future_lag_vals,
         })
     
     df_future = pd.DataFrame(future_rows)
     df_full = pd.concat([df_hist, df_future], ignore_index=True)
+    # Guarantee perfectly contiguous time_idx — pytorch_forecasting requires step=1
+    df_full["time_idx"] = range(len(df_full))
 
     # Run inference using model.predict so outputs are transformed back to MW scale.
     print(f"[TFT] Running model inference ({dec_win} steps)")
@@ -316,8 +393,9 @@ def run_tft_inference(
         df_full[cols_required],
         predict=True,
         stop_randomization=True,
+        allow_missing_timesteps=True,
     )
-    prediction_loader = prediction_dataset.to_dataloader(train=False, batch_size=1)
+    prediction_loader = prediction_dataset.to_dataloader(train=False, batch_size=1, num_workers=0)
 
     quantile_pred = model.predict(prediction_loader, mode="quantiles")
     if not torch.is_tensor(quantile_pred):

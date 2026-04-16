@@ -103,10 +103,21 @@ def fetch_and_predict(
         operational_file = OPERATIONAL_DIR / "recent_load.csv"
         load_df.to_csv(operational_file, index=False)
 
-        # 3. Generate TFT forecast with real model
+        # 3. Generate TFT forecast — lag_672 needs 7 days of history.
+        # Always fetch at least 8 days for inference even when user requests fewer.
+        MIN_INFERENCE_DAYS = 8
+        if days_to_fetch < MIN_INFERENCE_DAYS:
+            inf_start = history_end - timedelta(days=MIN_INFERENCE_DAYS)
+            inf_load_df = fetch_sldc_load_data(inf_start.strftime("%Y-%m-%d"), end_str)
+            if inf_load_df.empty:
+                inf_load_df = load_df  # graceful fallback
+        else:
+            inf_load_df = load_df
+
         forecast_df = _build_forecast_tft(
-            load_df, 
-            forecast_date=forecast_date if forecast_date else end_str
+            inf_load_df,
+            forecast_date=forecast_date if forecast_date else end_str,
+            temperature_delta_c=temperature_delta_c
         )
         avg_temperature_c = forecast_df.attrs.get("avg_temperature_c")
 
@@ -232,12 +243,13 @@ def _attach_actuals_for_horizon(forecast_df: pd.DataFrame) -> pd.DataFrame:
     return merged
 
 
-def _build_forecast_tft(load_df: pd.DataFrame, forecast_date: str | None = None) -> pd.DataFrame:
+def _build_forecast_tft(load_df: pd.DataFrame, forecast_date: str | None = None, temperature_delta_c: float = 0.0) -> pd.DataFrame:
     """Run TFT inference to generate probabilistic forecasts.
     
     Args:
         load_df: Historical load data  
         forecast_date: Date to forecast for (YYYY-MM-DD format)
+        temperature_delta_c: Temperature adjustment for what-if scenarios
     
     Returns:
         DataFrame with timestamp, p10, p50, p90 columns
@@ -251,6 +263,7 @@ def _build_forecast_tft(load_df: pd.DataFrame, forecast_date: str | None = None)
         historical_days=7,
         forecast_date=forecast_date,
         load_df=load_df,
+        temperature_delta_c=temperature_delta_c
     )
 
     # Ensure required columns exist and are numeric

@@ -348,7 +348,7 @@ export function DashboardPage() {
               <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-3 py-1 text-cyan-200">success</span>
               <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-300">{horizonHours}h horizon</span>
               <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-300">
-                Avg temp {avgTemperatureC == null ? "--" : `${avgTemperatureC.toFixed(1)} C`}
+                Avg temp: {avgTemperatureC == null ? "--" : `${avgTemperatureC.toFixed(1)} C`}
               </span>
             </div>
 

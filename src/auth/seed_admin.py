@@ -27,18 +27,18 @@ def ensure_user(
     existing_user = UserDB.get_user_by_username(username)
     if existing_user:
         if verify_password(password, existing_user["password_hash"]):
-            print(f"✓ {label} user already exists")
+            print(f"[OK] {label} user already exists")
             return
 
         updated = UserDB.update_password(existing_user["id"], password)
         if updated:
-            print(f"✓ {label} user already exists")
-            print(f"✓ {label} password reset to default for local development")
+            print(f"[OK] {label} user already exists")
+            print(f"[OK] {label} password reset to default for local development")
             print(f"  Username: {username}")
             print(f"  Default password: {password}")
             return
 
-        print(f"✗ {label} exists but password reset failed")
+        print(f"[FAIL] {label} exists but password reset failed")
         return
 
     created_user = UserDB.create_user(
@@ -50,12 +50,12 @@ def ensure_user(
     )
 
     if created_user:
-        print(f"✓ {label} user created successfully")
+        print(f"[OK] {label} user created successfully")
         print(f"  Username: {username}")
         print(f"  Email: {email}")
         print(f"  Default password: {password}")
     else:
-        print(f"✗ Failed to create {label} user")
+        print(f"[FAIL] Failed to create {label} user")
 
 
 def seed_admin():
