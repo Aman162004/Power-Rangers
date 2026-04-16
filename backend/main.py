@@ -58,14 +58,15 @@ def fetch_and_predict(
         if days_to_fetch < 1:
             raise HTTPException(status_code=400, detail="days_to_fetch must be >= 1")
 
-        # Temperature slider drives forecast scaling: 1 C maps to 2% load scaling.
+        # Temperature drives forecast scaling: 1 C delta maps to 2% load scaling.
+        # Frontend sends delta = actualTempC - 25, so range 10-60°C → delta -15 to +35.
         if temperature_delta_c is not None:
-            if temperature_delta_c < -5 or temperature_delta_c > 5:
-                raise HTTPException(status_code=400, detail="temperature_delta_c must be between -5 and 5")
+            if temperature_delta_c < -15 or temperature_delta_c > 35:
+                raise HTTPException(status_code=400, detail="temperature_delta_c must be between -15 and 35 (absolute temp 10–60 °C)")
             scenario_aggressiveness_pct = float(temperature_delta_c) * 2.0
         else:
-            if aggressiveness_pct < -10 or aggressiveness_pct > 10:
-                raise HTTPException(status_code=400, detail="aggressiveness_pct must be between -10 and 10")
+            if aggressiveness_pct < -30 or aggressiveness_pct > 70:
+                raise HTTPException(status_code=400, detail="aggressiveness_pct must be between -30 and 70")
             scenario_aggressiveness_pct = float(aggressiveness_pct)
 
         # 1. Fetch data
