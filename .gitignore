@@ -117,6 +117,8 @@ temp_*/
 *.log
 train_log.txt
 evaluation_results.txt
+*.tsbuildinfo
+admin_check.txt
 
 # Backend local runtime files
 backend/.env
