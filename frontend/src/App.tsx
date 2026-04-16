@@ -341,7 +341,7 @@ export default function App() {
 
             <div className="mt-4 flex flex-wrap gap-2 text-xs">
               <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-3 py-1 text-cyan-200">success</span>
-              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-300">24h horizon</span>
+              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-300">48h horizon</span>
               <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-300">Current temp {actualTempC} °C</span>
             </div>
 

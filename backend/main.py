@@ -26,8 +26,8 @@ app.add_middleware(
 )
 
 OPERATIONAL_DIR = project_root / "data" / "operational"
-DEFAULT_HORIZON_STEPS = 96
-DEFAULT_SEASONALITY_STEPS = 96
+DEFAULT_HORIZON_STEPS = 192   # 192 × 15 min = 48 hours
+DEFAULT_SEASONALITY_STEPS = 96  # 96 × 15 min = 24 hours (one full day seasonal cycle)
 
 # Ensure operational directory exists
 os.makedirs(OPERATIONAL_DIR, exist_ok=True)
@@ -40,7 +40,7 @@ def health_check():
 
 @app.post("/api/forecast")
 def fetch_and_predict(
-    days_to_fetch: int = 7,
+    days_to_fetch: int = 10,
     forecast_date: str | None = None,
     aggressiveness_pct: float = 0.0,
     temperature_delta_c: float | None = None,
