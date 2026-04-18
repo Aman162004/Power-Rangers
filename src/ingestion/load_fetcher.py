@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from datetime import date, datetime, timedelta
 from io import StringIO
+from pathlib import Path
 from typing import Iterable
 
 import pandas as pd
@@ -10,6 +11,11 @@ import requests
 from bs4 import BeautifulSoup
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+LOAD_CACHE_DIR = PROJECT_ROOT / "data" / "operational" / "raw"
+CURRENT_DAY_CACHE_TTL = timedelta(minutes=15)
 
 
 def _build_session(retry_total: int, backoff_factor: float, timeout_seconds: int) -> requests.Session:
@@ -70,6 +76,112 @@ def _extract_load_table(tables: list[pd.DataFrame]) -> pd.DataFrame | None:
     return None
 
 
+def _empty_load_frame() -> pd.DataFrame:
+    return pd.DataFrame(columns=["timestamp", "load_mw"])
+
+
+def _cache_path_for_day(day: date) -> Path:
+    return LOAD_CACHE_DIR / f"load_sldc_{day.isoformat()}.csv"
+
+
+def _normalize_day_frame(day_df: pd.DataFrame, day: date) -> pd.DataFrame:
+    if day_df.empty:
+        return _empty_load_frame()
+
+    normalized = day_df.copy()
+    normalized["timestamp"] = pd.to_datetime(normalized["timestamp"], errors="coerce")
+    normalized["load_mw"] = pd.to_numeric(normalized["load_mw"], errors="coerce")
+    normalized = normalized.dropna(subset=["timestamp", "load_mw"])
+    if normalized.empty:
+        return _empty_load_frame()
+
+    normalized = normalized[normalized["timestamp"].dt.date == day]
+    if normalized.empty:
+        return _empty_load_frame()
+
+    normalized = normalized.drop_duplicates(subset=["timestamp"]).sort_values("timestamp").reset_index(drop=True)
+    return normalized[["timestamp", "load_mw"]]
+
+
+def _load_cached_day(day: date) -> pd.DataFrame | None:
+    cache_path = _cache_path_for_day(day)
+    if not cache_path.exists():
+        return None
+
+    if day == date.today():
+        try:
+            modified_at = datetime.fromtimestamp(cache_path.stat().st_mtime)
+        except OSError:
+            return None
+
+        if datetime.now() - modified_at > CURRENT_DAY_CACHE_TTL:
+            return None
+
+    try:
+        cached = pd.read_csv(cache_path)
+    except Exception:
+        return None
+
+    if cached.empty or not {"timestamp", "load_mw"}.issubset(cached.columns):
+        return None
+
+    cached = _normalize_day_frame(cached, day)
+    if cached.empty:
+        return None
+
+    return cached
+
+
+def _write_day_cache(day: date, day_df: pd.DataFrame) -> None:
+    cache_df = _normalize_day_frame(day_df, day)
+    if cache_df.empty:
+        return
+
+    cache_path = _cache_path_for_day(day)
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        cache_df.to_csv(cache_path, index=False)
+    except Exception:
+        return
+
+
+def _scrape_sldc_day(
+    session: requests.Session,
+    day: date,
+    sleep_seconds: float,
+) -> pd.DataFrame:
+    date_param = day.strftime("%d/%m/%Y")
+    url = f"https://www.delhisldc.org/Loaddata.aspx?mode={date_param}"
+
+    response = session.get(url, timeout=session.request_timeout)
+    if response.status_code != 200:
+        time.sleep(sleep_seconds)
+        return _empty_load_frame()
+
+    soup = BeautifulSoup(response.text, "lxml")
+    try:
+        tables = pd.read_html(StringIO(str(soup)))
+    except ValueError:
+        time.sleep(sleep_seconds)
+        return _empty_load_frame()
+
+    extracted = _extract_load_table(tables)
+    if extracted is None:
+        time.sleep(sleep_seconds)
+        return _empty_load_frame()
+
+    extracted = extracted.copy()
+    extracted["DELHI"] = pd.to_numeric(extracted["DELHI"], errors="coerce")
+    extracted = extracted.dropna(subset=["DELHI", "TIMESLOT"])
+    extracted["timestamp"] = pd.to_datetime(day.strftime("%Y-%m-%d") + " " + extracted["TIMESLOT"].astype(str), errors="coerce")
+    extracted = extracted.dropna(subset=["timestamp"])
+
+    day_df = extracted[["timestamp", "DELHI"]].rename(columns={"DELHI": "load_mw"})
+    day_df = _normalize_day_frame(day_df, day)
+    time.sleep(sleep_seconds)
+    return day_df
+
+
 def fetch_sldc_load_data(
     start_date: str,
     end_date: str,
@@ -88,38 +200,18 @@ def fetch_sldc_load_data(
     daily_frames: list[pd.DataFrame] = []
 
     for day in _iter_dates(start_dt, end_dt):
-        date_param = day.strftime("%d/%m/%Y")
-        url = f"https://www.delhisldc.org/Loaddata.aspx?mode={date_param}"
+        day_df = _load_cached_day(day)
+        if day_df is None:
+            day_df = _scrape_sldc_day(session=session, day=day, sleep_seconds=sleep_seconds)
+            _write_day_cache(day, day_df)
 
-        response = session.get(url, timeout=session.request_timeout)
-        if response.status_code != 200:
-            time.sleep(sleep_seconds)
+        if day_df.empty:
             continue
 
-        soup = BeautifulSoup(response.text, "lxml")
-        try:
-            tables = pd.read_html(StringIO(str(soup)))
-        except ValueError:
-            time.sleep(sleep_seconds)
-            continue
-
-        extracted = _extract_load_table(tables)
-        if extracted is None:
-            time.sleep(sleep_seconds)
-            continue
-
-        extracted = extracted.copy()
-        extracted["DELHI"] = pd.to_numeric(extracted["DELHI"], errors="coerce")
-        extracted = extracted.dropna(subset=["DELHI", "TIMESLOT"])
-        extracted["timestamp"] = pd.to_datetime(day.strftime("%Y-%m-%d") + " " + extracted["TIMESLOT"].astype(str), errors="coerce")
-        extracted = extracted.dropna(subset=["timestamp"])
-
-        day_df = extracted[["timestamp", "DELHI"]].rename(columns={"DELHI": "load_mw"})
         daily_frames.append(day_df)
-        time.sleep(sleep_seconds)
 
     if not daily_frames:
-        return pd.DataFrame(columns=["timestamp", "load_mw"])
+        return _empty_load_frame()
 
     load_df = pd.concat(daily_frames, ignore_index=True)
     load_df = load_df.drop_duplicates(subset=["timestamp"]).sort_values("timestamp").reset_index(drop=True)

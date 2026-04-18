@@ -92,14 +92,39 @@ class DatasetBuilder:
         return work_df
 
     def split_dataframe(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-        """Split dataframe chronologically into train/val/test with 70/15/15 ratio."""
-        n = len(df)
+        """Split dataframe chronologically, using an optional training cutoff when configured."""
+        if 'timestamp' not in df.columns:
+            raise ValueError("Input data must contain a 'timestamp' column.")
+
+        work_df = df.copy()
+        work_df['timestamp'] = pd.to_datetime(work_df['timestamp'], errors='coerce')
+        work_df = work_df.dropna(subset=['timestamp']).sort_values('timestamp').reset_index(drop=True)
+
+        cutoff_date = self.config.get('data', {}).get('training_split_cutoff')
+        if cutoff_date:
+            try:
+                cutoff_boundary = pd.Timestamp(cutoff_date) + pd.Timedelta(days=1)
+            except Exception:
+                cutoff_boundary = None
+
+            if cutoff_boundary is not None:
+                train_df = work_df[work_df['timestamp'] < cutoff_boundary].reset_index(drop=True)
+                future_df = work_df[work_df['timestamp'] >= cutoff_boundary].reset_index(drop=True)
+
+                if not train_df.empty and len(future_df) >= 2:
+                    val_end = max(1, len(future_df) // 2)
+                    val_df = future_df.iloc[:val_end].reset_index(drop=True)
+                    test_df = future_df.iloc[val_end:].reset_index(drop=True)
+                    if not val_df.empty and not test_df.empty:
+                        return train_df, val_df, test_df
+
+        n = len(work_df)
         train_end = int(0.7 * n)
         val_end = int(0.85 * n)
 
-        train_df = df.iloc[:train_end].reset_index(drop=True)
-        val_df = df.iloc[train_end:val_end].reset_index(drop=True)
-        test_df = df.iloc[val_end:].reset_index(drop=True)
+        train_df = work_df.iloc[:train_end].reset_index(drop=True)
+        val_df = work_df.iloc[train_end:val_end].reset_index(drop=True)
+        test_df = work_df.iloc[val_end:].reset_index(drop=True)
         return train_df, val_df, test_df
 
     def build_datasets(self, df: pd.DataFrame) -> Tuple[TimeSeriesDataSet, TimeSeriesDataSet, TimeSeriesDataSet]:

@@ -421,6 +421,7 @@ def run_training_pipeline(config_path: str = "config/config.yaml", run_id: str =
         attention_head_size=config['model']['attention_head_size'],
         dropout=config['model']['dropout'],
         hidden_continuous_size=config['model']['hidden_continuous_size'],
+        learning_rate=config['model']['learning_rate'],
         output_size=len(config['model']['quantiles']),
         loss=QuantileLoss(quantiles=config['model']['quantiles']),
         mask_bias=mask_bias,
