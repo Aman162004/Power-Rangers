@@ -25,6 +25,7 @@ data:
     train: "train_data.parquet"
     val: "val_data.parquet"
     test: "test_data.parquet"
+  training_split_cutoff: "2025-12-31"
   
   # Features to drop (audit, redundant, or pre-processing artifacts)
   training_drop_columns:
@@ -55,7 +56,7 @@ ingestion:
     manifest: "data/operational/raw/ingestion_manifest_{start_date}_to_{end_date}.json"
 
 pipeline:
-  encoder_window: 24  # 6 hours * 4
+  encoder_window: 96  # 24 hours * 4
   decoder_window: 192   # 48 hours prediction
   stride: 1
 
@@ -71,7 +72,7 @@ model:
   output_size: 1  # For point predictions, or 3 for quantiles
   loss: "quantile"  # or "mae"
   quantiles: [0.1, 0.5, 0.9]
-  learning_rate: 0.0003
+  learning_rate: 0.0001
   max_epochs: 50
   batch_size: 128
 
