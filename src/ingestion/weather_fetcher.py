@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import os
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import Iterable
 
 import pandas as pd
 import requests_cache
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _cached_session(cache_name: str, retry_total: int, backoff_factor: float):
@@ -67,11 +72,19 @@ def fetch_openmeteo_weather_data(
     timezone: str = "Asia/Kolkata",
     retry_total: int = 5,
     backoff_factor: float = 0.3,
-    cache_name: str = ".cache/openmeteo",
+    cache_name: str | None = None,
 ) -> pd.DataFrame:
     """Fetch weather data from Open-Meteo and upsample to 15-minute frequency."""
 
-    session = _cached_session(cache_name=cache_name, retry_total=retry_total, backoff_factor=backoff_factor)
+    if cache_name is None:
+        cache_name = os.getenv("OPENMETEO_CACHE_NAME", "/tmp/power-rangers/openmeteo")
+
+    cache_path = Path(cache_name)
+    if not cache_path.is_absolute():
+        cache_path = PROJECT_ROOT / cache_path
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+
+    session = _cached_session(cache_name=str(cache_path), retry_total=retry_total, backoff_factor=backoff_factor)
 
     params_base = {
         "latitude": latitude,

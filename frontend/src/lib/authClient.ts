@@ -4,10 +4,12 @@
 
 import axios, { AxiosInstance } from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+
+const buildApiUrl = (path: string) => `${API_BASE_URL}${path}`;
 
 const authClient: AxiosInstance = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: API_BASE_URL || undefined,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -34,7 +36,7 @@ authClient.interceptors.response.use(
       const refreshToken = localStorage.getItem('refresh_token');
       if (refreshToken) {
         try {
-          const response = await axios.post(`${API_BASE_URL}/api/auth/refresh`, {
+          const response = await axios.post(buildApiUrl('/api/auth/refresh'), {
             refresh_token: refreshToken,
           });
 

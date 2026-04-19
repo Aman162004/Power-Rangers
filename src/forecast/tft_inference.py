@@ -13,7 +13,7 @@ import torch
 import yaml
 import requests
 
-from pytorch_forecasting import TemporalFusionTransformer
+from pytorch_forecasting import TemporalFusionTransformer, TimeSeriesDataSet
 from pytorch_forecasting.metrics import QuantileLoss
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -35,11 +35,6 @@ warnings.filterwarnings(
 
 from src.ingestion.load_fetcher import fetch_sldc_load_data
 from src.ingestion.weather_fetcher import fetch_openmeteo_weather_data
-from src.training.training_pipeline import (
-    _build_tft_datasets,
-    _drop_unused_training_columns,
-    _load_training_splits,
-)
 import holidays as holidays_lib
 
 
@@ -111,19 +106,10 @@ def _find_latest_checkpoint(config: dict) -> Path:
     raise FileNotFoundError("No checkpoint found")
 
 
-def _load_tft_model(checkpoint_path: Path, config: dict) -> TemporalFusionTransformer:
-    """Load TFT checkpoint and training dataset for consistent inference scaling."""
-    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
-
-    # Rebuild the training dataset exactly from prepared splits so encoders/scalers match training.
-    train_df, val_df, test_df = _load_training_splits(config)
-    train_df = _drop_unused_training_columns(train_df, config)
-    val_df = _drop_unused_training_columns(val_df, config)
-    test_df = _drop_unused_training_columns(test_df, config)
-    train_dataset, _, _ = _build_tft_datasets(config, train_df, val_df, test_df)
-    
+def _load_tft_model(checkpoint: dict, prediction_dataset: TimeSeriesDataSet, config: dict) -> TemporalFusionTransformer:
+    """Load TFT checkpoint using the shipped prediction dataset metadata."""
     model = TemporalFusionTransformer.from_dataset(
-        train_dataset,
+        prediction_dataset,
         hidden_size=config["model"]["hidden_size"],
         attention_head_size=config["model"]["attention_head_size"],
         dropout=config["model"]["dropout"],
@@ -134,7 +120,7 @@ def _load_tft_model(checkpoint_path: Path, config: dict) -> TemporalFusionTransf
     
     model.load_state_dict(checkpoint["state_dict"])
     model.eval()
-    return model, train_dataset
+    return model
 
 
 def run_tft_inference(
@@ -309,14 +295,22 @@ def run_tft_inference(
     df_future = pd.DataFrame(future_rows)
     df_full = pd.concat([df_hist, df_future], ignore_index=True)
 
-    # Run inference using model.predict so outputs are transformed back to MW scale.
-    print(f"[TFT] Running model inference ({dec_win} steps)")
-    prediction_dataset = type(train_dataset).from_dataset(
-        train_dataset,
+    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+    dataset_parameters = checkpoint.get("dataset_parameters")
+    if not isinstance(dataset_parameters, dict):
+        raise RuntimeError("Checkpoint is missing dataset parameters required for inference")
+
+    prediction_dataset = TimeSeriesDataSet.from_parameters(
+        dataset_parameters,
         df_full[cols_required],
         predict=True,
         stop_randomization=True,
     )
+
+    model = _load_tft_model(checkpoint, prediction_dataset, config)
+
+    # Run inference using model.predict so outputs are transformed back to MW scale.
+    print(f"[TFT] Running model inference ({dec_win} steps)")
     prediction_loader = prediction_dataset.to_dataloader(train=False, batch_size=1)
 
     quantile_pred = model.predict(prediction_loader, mode="quantiles")

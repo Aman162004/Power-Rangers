@@ -4,7 +4,12 @@ import jwt
 import os
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
-from dotenv import load_dotenv
+
+try:
+    from dotenv import load_dotenv
+except ImportError:  # pragma: no cover - optional local-development dependency
+    def load_dotenv() -> None:
+        return None
 
 load_dotenv()
 

@@ -112,7 +112,7 @@ export function DashboardPage() {
 
     try {
       const response = await fetch(
-        `http://localhost:8000/api/forecast?days_to_fetch=3&forecast_date=${encodeURIComponent(forecastDate)}&temperature_delta_c=${encodeURIComponent(temperatureDelta.toString())}`,
+        `/api/forecast?days_to_fetch=3&forecast_date=${encodeURIComponent(forecastDate)}&temperature_delta_c=${encodeURIComponent(temperatureDelta.toString())}`,
         { method: "POST" },
       );
       if (!response.ok) {

@@ -9,7 +9,7 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DB_PATH = os.getenv("AUTH_DB_PATH", str(PROJECT_ROOT / "data" / "auth.db"))
+DB_PATH = os.getenv("AUTH_DB_PATH", "/tmp/auth.db")
 
 
 def get_db_connection():

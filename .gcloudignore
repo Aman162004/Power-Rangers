@@ -1,0 +1,17 @@
+.git/
+.github/
+.venv/
+__pycache__/
+*.pyc
+.env
+.env.*
+*.log
+**/data/**
+**/lightning_logs/**
+models/runs/**
+models/testing/**
+frontend/node_modules/**
+frontend/dist/**
+src/training/**
+src/testing/**
+src/evaluation/**

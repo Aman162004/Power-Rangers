@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import time
 from datetime import date, datetime, timedelta
 from io import StringIO
@@ -14,7 +15,9 @@ from urllib3.util.retry import Retry
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-LOAD_CACHE_DIR = PROJECT_ROOT / "data" / "operational" / "raw"
+LOAD_CACHE_DIR = Path(os.getenv("SLDC_LOAD_CACHE_DIR", "/tmp/power-rangers/operational/raw"))
+if not LOAD_CACHE_DIR.is_absolute():
+    LOAD_CACHE_DIR = PROJECT_ROOT / LOAD_CACHE_DIR
 CURRENT_DAY_CACHE_TTL = timedelta(minutes=15)
 
 

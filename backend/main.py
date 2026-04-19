@@ -5,7 +5,7 @@ import warnings
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 import sys
 from pathlib import Path
@@ -19,6 +19,7 @@ from src.forecast.tft_inference import run_tft_inference
 from src.forecast.fallback_data import load_dummy_forecast_data
 from src.shared.config import ENABLE_DUMMY_FALLBACK
 from src.auth.routes import router as auth_router
+from src.auth.seed_admin import seed_admin
 
 # Suppress TFT inference warnings during operation
 warnings.filterwarnings("ignore", module="pytorch_forecasting")
@@ -26,26 +27,29 @@ warnings.filterwarnings("ignore", module="pytorch_forecasting")
 app = FastAPI(title="Power Rangers Backend API")
 logger = logging.getLogger(__name__)
 
-# Setup CORS for React frontend
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Adjust this in production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+FRONTEND_DIST_DIR = project_root / "frontend" / "dist"
+FRONTEND_INDEX_FILE = FRONTEND_DIST_DIR / "index.html"
+OPERATIONAL_DIR = Path(os.getenv("OPERATIONAL_DIR", "/tmp/power-rangers/operational"))
 
 # Register auth routes
 app.include_router(auth_router)
 
-OPERATIONAL_DIR = project_root / "data" / "operational"
 
-# Ensure operational directory exists
-os.makedirs(OPERATIONAL_DIR, exist_ok=True)
+@app.on_event("startup")
+def _startup() -> None:
+    OPERATIONAL_DIR.mkdir(parents=True, exist_ok=True)
+    seed_admin()
 
 
 @app.get("/api/health")
 def health_check():
+    return {"status": "ok"}
+
+
+@app.get("/")
+def serve_root():
+    if FRONTEND_INDEX_FILE.exists():
+        return FileResponse(FRONTEND_INDEX_FILE)
     return {"status": "ok"}
 
 
@@ -164,6 +168,34 @@ def fetch_and_predict(
             return load_dummy_forecast_data()
         logger.exception("Forecast request failed")
         raise HTTPException(status_code=500, detail="Forecast generation failed. Check server logs.") from e
+
+
+@app.get("/{requested_path:path}")
+def serve_spa(requested_path: str):
+    if requested_path == "api" or requested_path.startswith("api/"):
+        raise HTTPException(status_code=404, detail="Not found")
+
+    if requested_path in {"docs", "openapi.json", "redoc"}:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    if not FRONTEND_INDEX_FILE.exists():
+        raise HTTPException(status_code=404, detail="Frontend bundle not built")
+
+    frontend_root = FRONTEND_DIST_DIR.resolve()
+    candidate = (FRONTEND_DIST_DIR / requested_path).resolve()
+
+    try:
+        candidate.relative_to(frontend_root)
+    except ValueError:
+        return FileResponse(FRONTEND_INDEX_FILE)
+
+    if candidate.is_file():
+        return FileResponse(candidate)
+
+    if Path(requested_path).suffix:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    return FileResponse(FRONTEND_INDEX_FILE)
 
 
 def _infer_step_minutes(df: pd.DataFrame) -> int:
