@@ -146,7 +146,6 @@ def run_tft_inference(
         raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
     
     print(f"[TFT] Loading checkpoint from {checkpoint_path.name}")
-    model, train_dataset = _load_tft_model(checkpoint_path, config)
     
     # Resolve forecast date
     if forecast_date:
