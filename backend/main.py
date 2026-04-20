@@ -1,5 +1,6 @@
 import os
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 import warnings
 
@@ -14,7 +15,7 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
-from src.ingestion.load_fetcher import fetch_sldc_load_data
+from src.ingestion.load_fetcher import ACTUAL_CACHE_PREFIX, fetch_sldc_actual_load_data, fetch_sldc_load_data
 from src.forecast.tft_inference import run_tft_inference
 from src.forecast.fallback_data import load_dummy_forecast_data
 from src.shared.config import ENABLE_DUMMY_FALLBACK
@@ -98,24 +99,38 @@ def fetch_and_predict(
         start_str = start_date.strftime("%Y-%m-%d")
         end_str = history_end.strftime("%Y-%m-%d")
 
-        load_df = fetch_sldc_load_data(start_str, end_str)
+        should_prefetch_actuals = forecast_target_date is None or forecast_target_date <= datetime.now().date()
 
-        if load_df.empty:
-            raise HTTPException(status_code=404, detail="No data fetched from SLDC.")
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            actuals_future = None
+            if should_prefetch_actuals:
+                actuals_future = executor.submit(_warm_today_actual_cache)
 
-        # 2. Store in operational folder
-        operational_file = OPERATIONAL_DIR / "recent_load.csv"
-        load_df.to_csv(operational_file, index=False)
+            load_df = fetch_sldc_load_data(start_str, end_str)
 
-        # 3. Generate TFT forecast with real model
-        forecast_df = _build_forecast_tft(
-            load_df, 
-            forecast_date=forecast_date if forecast_date else end_str
-        )
-        avg_temperature_c = forecast_df.attrs.get("avg_temperature_c")
+            if load_df.empty:
+                raise HTTPException(status_code=404, detail="No data fetched from SLDC.")
 
-        forecast_df = _apply_aggressiveness(forecast_df, scenario_aggressiveness_pct)
-        forecast_with_actuals = _attach_actuals_for_horizon(forecast_df)
+            # 2. Store in operational folder
+            operational_file = OPERATIONAL_DIR / "recent_load.csv"
+            load_df.to_csv(operational_file, index=False)
+
+            # 3. Generate TFT forecast with real model
+            forecast_df = _build_forecast_tft(
+                load_df,
+                forecast_date=forecast_date if forecast_date else end_str,
+            )
+            avg_temperature_c = forecast_df.attrs.get("avg_temperature_c")
+
+            forecast_df = _apply_aggressiveness(forecast_df, scenario_aggressiveness_pct)
+
+            if actuals_future is not None:
+                try:
+                    actuals_future.result()
+                except Exception:
+                    logger.exception("Background SLDC actual cache warm-up failed")
+
+            forecast_with_actuals = _attach_actuals_for_horizon(forecast_df)
         predictions = [
             {
                 "timestamp": row.timestamp.isoformat(),
@@ -242,7 +257,7 @@ def _attach_actuals_for_horizon(forecast_df: pd.DataFrame) -> pd.DataFrame:
 
     actual_start = horizon_start.strftime("%Y-%m-%d")
     actual_end = min(horizon_end.date(), today).strftime("%Y-%m-%d")
-    actual_df = fetch_sldc_load_data(actual_start, actual_end)
+    actual_df = fetch_sldc_actual_load_data(actual_start, actual_end)
 
     if actual_df.empty:
         out["actual_load_mw"] = pd.NA
@@ -262,6 +277,19 @@ def _attach_actuals_for_horizon(forecast_df: pd.DataFrame) -> pd.DataFrame:
         how="left",
     )
     return merged
+
+
+def _warm_today_actual_cache() -> None:
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    try:
+        fetch_sldc_load_data(
+            today_str,
+            today_str,
+            cache_prefix=ACTUAL_CACHE_PREFIX,
+            current_day_freshness_window=timedelta(hours=1),
+        )
+    except Exception:
+        logger.exception("Failed to warm today's SLDC actual cache")
 
 
 def _build_forecast_tft(load_df: pd.DataFrame, forecast_date: str | None = None) -> pd.DataFrame:

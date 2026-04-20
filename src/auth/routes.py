@@ -40,6 +40,33 @@ def format_user_response(user: dict) -> UserResponse:
     )
 
 
+def _issue_tokens_for_user(user: dict) -> TokenResponse:
+    session_version = UserDB.increment_session_version(user["id"])
+    if session_version is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to start user session",
+        )
+
+    RefreshTokenDB.revoke_all_refresh_tokens_for_user(user["id"])
+
+    expires_in_days = 7
+    access_token, _ = create_access_token({"sub": str(user["id"])}, session_version=session_version)
+    refresh_token = create_refresh_token(user["id"], session_version=session_version)
+    RefreshTokenDB.create_refresh_token(
+        user["id"],
+        datetime.utcnow() + timedelta(days=expires_in_days),
+        token=refresh_token,
+    )
+
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        expires_in=2 * 3600,
+        user=format_user_response(user),
+    )
+
+
 @router.post("/register", response_model=TokenResponse)
 def register(request: RegisterRequest):
     """Register a new user with an invite token."""
@@ -69,23 +96,7 @@ def register(request: RegisterRequest):
     # Mark invite token as used
     InviteTokenDB.mark_token_used(request.invite_token, user["id"])
     
-    # Create tokens
-    access_token, expires_at = create_access_token({"sub": str(user["id"])})
-    refresh_token = create_refresh_token(user["id"])
-    
-    # Store refresh token hash
-    expires_in_days = 7
-    RefreshTokenDB.create_refresh_token(
-        user["id"],
-        datetime.utcnow() + timedelta(days=expires_in_days),
-    )
-    
-    return TokenResponse(
-        access_token=access_token,
-        refresh_token=refresh_token,
-        expires_in=2 * 3600,  # 2 hours in seconds
-        user=format_user_response(user),
-    )
+    return _issue_tokens_for_user(user)
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -99,23 +110,7 @@ def login(request: LoginRequest):
             detail="Invalid username or password",
         )
     
-    # Create tokens
-    access_token, expires_at = create_access_token({"sub": str(user["id"])})
-    refresh_token = create_refresh_token(user["id"])
-    
-    # Store refresh token hash
-    expires_in_days = 7
-    RefreshTokenDB.create_refresh_token(
-        user["id"],
-        datetime.utcnow() + timedelta(days=expires_in_days),
-    )
-    
-    return TokenResponse(
-        access_token=access_token,
-        refresh_token=refresh_token,
-        expires_in=2 * 3600,  # 2 hours in seconds
-        user=format_user_response(user),
-    )
+    return _issue_tokens_for_user(user)
 
 
 @router.post("/refresh", response_model=TokenResponse)
@@ -130,6 +125,7 @@ def refresh(request: RefreshTokenRequest):
         )
     
     user_id = int(payload.get("sub"))
+    token_session_version = int(payload.get("session_version", 0))
     
     # Verify refresh token in database
     if not RefreshTokenDB.verify_refresh_token(user_id, request.refresh_token):
@@ -144,9 +140,16 @@ def refresh(request: RefreshTokenRequest):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found",
         )
+
+    current_session_version = UserDB.get_user_session_version(user_id)
+    if current_session_version is None or token_session_version != current_session_version:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session expired. Please log in again.",
+        )
     
     # Create new access token
-    access_token, expires_at = create_access_token({"sub": str(user["id"])})
+    access_token, expires_at = create_access_token({"sub": str(user["id"])}, session_version=current_session_version)
     
     return TokenResponse(
         access_token=access_token,
