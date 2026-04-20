@@ -30,8 +30,11 @@ def _build_session(retry_total: int, backoff_factor: float, timeout_seconds: int
     
     proxy_url = os.environ.get("SCRAPER_PROXY_URL")
     if proxy_url:
+        print(f"[Ingestion] Using scraper proxy: {proxy_url.split('@')[-1]}")
         session.proxies = {"http": proxy_url, "https": proxy_url}
         session.verify = False  # Residential proxies often use self-signed certs or SSL interception
+    else:
+        print("[Ingestion] No scraper proxy configured.")
 
     retry = Retry(
         total=retry_total,
