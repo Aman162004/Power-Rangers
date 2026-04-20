@@ -9,6 +9,7 @@ from typing import Iterable
 
 import pandas as pd
 import requests
+import pytz
 from bs4 import BeautifulSoup
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -21,7 +22,7 @@ if not LOAD_CACHE_DIR.is_absolute():
 LOAD_CACHE_PREFIX = "load_sldc"
 ACTUAL_CACHE_PREFIX = "actual_sldc"
 CURRENT_DAY_CACHE_TTL = timedelta(minutes=15)
-ACTUAL_CACHE_FRESHNESS_WINDOW = timedelta(hours=1)
+ACTUAL_CACHE_FRESHNESS_WINDOW = timedelta(minutes=45)
 
 
 def _build_session(retry_total: int, backoff_factor: float, timeout_seconds: int) -> requests.Session:
@@ -130,6 +131,10 @@ def _cached_day_latest_timestamp(day_df: pd.DataFrame) -> datetime | None:
     return pd.Timestamp(latest_timestamp).to_pydatetime()
 
 
+def _get_now_ist() -> datetime:
+    return datetime.now(pytz.timezone("Asia/Kolkata")).replace(tzinfo=None)
+
+
 def _load_cached_day(
     day: date,
     cache_prefix: str = LOAD_CACHE_PREFIX,
@@ -151,24 +156,25 @@ def _load_cached_day(
     if cached.empty:
         return None
 
-    if current_day_freshness_window is not None and day == date.today():
+    now = _get_now_ist()
+    if current_day_freshness_window is not None and day == now.date():
         latest_timestamp = _cached_day_latest_timestamp(cached)
         if latest_timestamp is None:
             return None
 
-        if datetime.now() - latest_timestamp > current_day_freshness_window:
+        if now - latest_timestamp > current_day_freshness_window:
             return None
 
-    if day == date.today() and current_day_freshness_window is None:
+    if day == now.date() and current_day_freshness_window is None:
         try:
             modified_at = datetime.fromtimestamp(cache_path.stat().st_mtime)
         except OSError:
             return None
-
-        if datetime.now() - modified_at > CURRENT_DAY_CACHE_TTL:
+        if now - modified_at > CURRENT_DAY_CACHE_TTL:
             return None
 
     return cached
+
 
 
 def _write_day_cache(day: date, day_df: pd.DataFrame, cache_prefix: str = LOAD_CACHE_PREFIX) -> None:
@@ -292,7 +298,8 @@ def fetch_sldc_actual_load_data(
     if end_dt < start_dt:
         return _empty_load_frame()
 
-    today = date.today()
+    now = _get_now_ist()
+    today = now.date()
     historical_end = min(end_dt, today - timedelta(days=1))
     daily_frames: list[pd.DataFrame] = []
 

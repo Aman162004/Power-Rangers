@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 import warnings
 
 import pandas as pd
+import pytz
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 
@@ -15,7 +16,12 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
-from src.ingestion.load_fetcher import ACTUAL_CACHE_PREFIX, fetch_sldc_actual_load_data, fetch_sldc_load_data
+from src.ingestion.load_fetcher import (
+    ACTUAL_CACHE_FRESHNESS_WINDOW,
+    ACTUAL_CACHE_PREFIX,
+    fetch_sldc_actual_load_data,
+    fetch_sldc_load_data,
+)
 from src.forecast.tft_inference import run_tft_inference
 from src.forecast.fallback_data import load_dummy_forecast_data
 from src.shared.config import ENABLE_DUMMY_FALLBACK
@@ -54,6 +60,10 @@ def serve_root():
     return {"status": "ok"}
 
 
+def _get_now_ist() -> datetime:
+    return datetime.now(pytz.timezone("Asia/Kolkata")).replace(tzinfo=None)
+
+
 @app.post("/api/forecast")
 def fetch_and_predict(
     days_to_fetch: int = 7,
@@ -84,6 +94,7 @@ def fetch_and_predict(
         scenario_aggressiveness_pct = float(aggressiveness_pct)
 
     try:
+        now = _get_now_ist()
         # 1. Fetch data
         # If forecast_date is provided, interpret it as the first day of forecast horizon.
         # Use previous day as the historical endpoint so predictions are generated for selected day.
@@ -91,7 +102,7 @@ def fetch_and_predict(
             forecast_target_date = _resolve_anchor_date(forecast_date).date()
             history_end = datetime.combine(forecast_target_date - timedelta(days=1), datetime.min.time())
         else:
-            history_end = datetime.now()
+            history_end = now
             forecast_target_date = None
 
         start_date = history_end - timedelta(days=days_to_fetch)
@@ -99,7 +110,7 @@ def fetch_and_predict(
         start_str = start_date.strftime("%Y-%m-%d")
         end_str = history_end.strftime("%Y-%m-%d")
 
-        should_prefetch_actuals = forecast_target_date is None or forecast_target_date <= datetime.now().date()
+        should_prefetch_actuals = forecast_target_date is None or forecast_target_date <= now.date()
 
         with ThreadPoolExecutor(max_workers=1) as executor:
             actuals_future = None
@@ -225,7 +236,7 @@ def _infer_step_minutes(df: pd.DataFrame) -> int:
 
 def _resolve_anchor_date(forecast_date: str | None) -> datetime:
     if not forecast_date:
-        return datetime.now()
+        return _get_now_ist()
 
     try:
         return datetime.strptime(forecast_date, "%Y-%m-%d")
@@ -249,7 +260,8 @@ def _attach_actuals_for_horizon(forecast_df: pd.DataFrame) -> pd.DataFrame:
 
     horizon_start = out["timestamp"].min()
     horizon_end = out["timestamp"].max()
-    today = datetime.now().date()
+    now = _get_now_ist()
+    today = now.date()
 
     if horizon_start.date() > today:
         out["actual_load_mw"] = pd.NA
@@ -280,13 +292,14 @@ def _attach_actuals_for_horizon(forecast_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _warm_today_actual_cache() -> None:
-    today_str = datetime.now().strftime("%Y-%m-%d")
+    now = _get_now_ist()
+    today_str = now.strftime("%Y-%m-%d")
     try:
         fetch_sldc_load_data(
             today_str,
             today_str,
             cache_prefix=ACTUAL_CACHE_PREFIX,
-            current_day_freshness_window=timedelta(hours=1),
+            current_day_freshness_window=ACTUAL_CACHE_FRESHNESS_WINDOW,
         )
     except Exception:
         logger.exception("Failed to warm today's SLDC actual cache")
