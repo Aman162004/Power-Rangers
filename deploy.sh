@@ -34,4 +34,4 @@ gcloud run deploy "$SERVICE_NAME" \
   --max-instances 1 \
   --min-instances 1 \
   --timeout 900 \
-  --set-env-vars "JWT_SECRET_KEY=$JWT_SECRET_KEY,AUTH_DB_PATH=/tmp/auth.db,ENABLE_DUMMY_FALLBACK=false,OPERATIONAL_DIR=/tmp/power-rangers/operational,SLDC_LOAD_CACHE_DIR=/tmp/power-rangers/operational/raw,OPENMETEO_CACHE_NAME=/tmp/power-rangers/openmeteo"
+  --set-env-vars "JWT_SECRET_KEY=$JWT_SECRET_KEY,AUTH_DB_PATH=/tmp/auth.db,ENABLE_DUMMY_FALLBACK=false,OPERATIONAL_DIR=/tmp/power-rangers/operational,SLDC_LOAD_CACHE_DIR=/tmp/power-rangers/operational/raw,SCRAPER_PROXY_URL=$SCRAPER_PROXY_URL,OPENMETEO_CACHE_NAME=/tmp/power-rangers/openmeteo"

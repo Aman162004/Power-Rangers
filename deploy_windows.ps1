@@ -25,6 +25,7 @@ $envVars = @(
     "ENABLE_DUMMY_FALLBACK=false"
     "OPERATIONAL_DIR=/tmp/power-rangers/operational"
     "SLDC_LOAD_CACHE_DIR=/tmp/power-rangers/operational/raw"
+    "SCRAPER_PROXY_URL=$env:SCRAPER_PROXY_URL"
     "OPENMETEO_CACHE_NAME=/tmp/power-rangers/openmeteo"
 ) -join ","
 
