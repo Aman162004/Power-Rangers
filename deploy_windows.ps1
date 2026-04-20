@@ -6,6 +6,31 @@ param(
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
+if (-not $env:SCRAPER_PROXY_URL) {
+    $dotenvPath = Join-Path $PSScriptRoot ".env"
+    if (Test-Path $dotenvPath) {
+        foreach ($line in Get-Content $dotenvPath) {
+            $trimmed = $line.Trim()
+            if (-not $trimmed -or $trimmed.StartsWith("#") -or -not $trimmed.Contains("=")) {
+                continue
+            }
+
+            $key, $value = $trimmed.Split("=", 2)
+            if ($key.Trim() -ne "SCRAPER_PROXY_URL") {
+                continue
+            }
+
+            $value = $value.Trim()
+            if ($value.Length -ge 2 -and $value.StartsWith('"') -and $value.EndsWith('"')) {
+                $value = $value.Substring(1, $value.Length - 2)
+            }
+
+            $env:SCRAPER_PROXY_URL = $value
+            break
+        }
+    }
+}
+
 if (-not $env:JWT_SECRET_KEY) {
     $bytes = New-Object byte[] 48
     $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()

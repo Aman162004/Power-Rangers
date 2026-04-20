@@ -30,6 +30,7 @@ def _build_session(retry_total: int, backoff_factor: float, timeout_seconds: int
     proxy_url = os.environ.get("SCRAPER_PROXY_URL")
     if proxy_url:
         session.proxies = {"http": proxy_url, "https": proxy_url}
+        session.verify = False  # Residential proxies often use self-signed certs or SSL interception
 
     retry = Retry(
         total=retry_total,
