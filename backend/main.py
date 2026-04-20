@@ -115,22 +115,35 @@ def fetch_and_predict(
         with ThreadPoolExecutor(max_workers=1) as executor:
             actuals_future = None
             if should_prefetch_actuals:
+                print(f"[Backend] Prefetching today's actuals in background...")
                 actuals_future = executor.submit(_warm_today_actual_cache)
 
+            print(f"[Backend] Fetching input data for forecast: {start_str} to {end_str}")
             load_df = fetch_sldc_load_data(start_str, end_str)
 
             if load_df.empty:
+                print(f"[Backend] Ingestion failed: No data returned from SLDC.")
                 raise HTTPException(status_code=404, detail="No data fetched from SLDC.")
+            
+            print(f"[Backend] Ingestion successful: {len(load_df)} rows fetched.")
 
             # 2. Store in operational folder
             operational_file = OPERATIONAL_DIR / "recent_load.csv"
             load_df.to_csv(operational_file, index=False)
 
             # 3. Generate TFT forecast with real model
-            forecast_df = _build_forecast_tft(
-                load_df,
-                forecast_date=forecast_date if forecast_date else end_str,
-            )
+            try:
+                print(f"[Backend] Starting TFT model inference...")
+                forecast_df = _build_forecast_tft(
+                    load_df,
+                    forecast_date=forecast_date if forecast_date else end_str,
+                )
+                print(f"[Backend] Inference successful: {len(forecast_df)} forecast steps generated.")
+            except Exception as e:
+                print(f"[Backend] Inference FAILED: {str(e)}")
+                logger.exception("TFT Inference failed")
+                raise
+
             avg_temperature_c = forecast_df.attrs.get("avg_temperature_c")
 
             forecast_df = _apply_aggressiveness(forecast_df, scenario_aggressiveness_pct)

@@ -219,9 +219,14 @@ def _scrape_sldc_day(
     date_param = day.strftime("%d/%m/%Y")
     url = f"https://www.delhisldc.org/Loaddata.aspx?mode={date_param}"
 
-    response = session.get(url, timeout=session.request_timeout)
-    if response.status_code != 200:
-        time.sleep(sleep_seconds)
+    try:
+        response = session.get(url, timeout=session.request_timeout)
+        if response.status_code != 200:
+            print(f"[Ingestion] HTTP {response.status_code} for {url}")
+            time.sleep(sleep_seconds)
+            return _empty_load_frame()
+    except Exception as e:
+        print(f"[Ingestion] Connection error for {url}: {str(e)}")
         return _empty_load_frame()
 
     soup = BeautifulSoup(response.text, "lxml")
@@ -274,8 +279,15 @@ def fetch_sldc_load_data(
             current_day_freshness_window=current_day_freshness_window,
         )
         if day_df is None:
+            print(f"[Ingestion] Cache MISS for {day}. Scraping from SLDC...")
             day_df = _scrape_sldc_day(session=session, day=day, sleep_seconds=sleep_seconds)
-            _write_day_cache(day, day_df, cache_prefix=cache_prefix)
+            if not day_df.empty:
+                print(f"[Ingestion] Scraping SUCCESS for {day}: {len(day_df)} rows.")
+                _write_day_cache(day, day_df, cache_prefix=cache_prefix)
+            else:
+                print(f"[Ingestion] Scraping FAILED for {day}.")
+        else:
+            print(f"[Ingestion] Cache HIT for {day}: {len(day_df)} rows.")
 
         if day_df.empty:
             continue
