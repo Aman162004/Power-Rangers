@@ -2,11 +2,41 @@
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer
-from typing import Optional
-from src.auth.jwt_handler import verify_token, extract_user_id_from_token
+from src.auth.jwt_handler import verify_token
 from src.auth.database import UserDB
 
 security = HTTPBearer(auto_error=False)
+
+
+def _get_authenticated_user(payload: dict) -> dict:
+    token_type = payload.get("type", "access")
+    if token_type == "refresh":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    user_id = int(payload.get("sub"))
+    token_session_version = int(payload.get("session_version", 0))
+    user = UserDB.get_user_by_id(user_id)
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    current_session_version = int(user.get("session_version", 0))
+    if token_session_version != current_session_version:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session expired. Please log in again.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return user
 
 
 def get_current_user(credentials=Depends(security)):
@@ -27,18 +57,8 @@ def get_current_user(credentials=Depends(security)):
             detail="Invalid or expired token",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
-    user_id = int(payload.get("sub"))
-    user = UserDB.get_user_by_id(user_id)
-    
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    
-    return user
+
+    return _get_authenticated_user(payload)
 
 
 def get_current_user_optional(credentials=Depends(security)):
@@ -51,11 +71,11 @@ def get_current_user_optional(credentials=Depends(security)):
     
     if payload is None:
         return None
-    
-    user_id = int(payload.get("sub"))
-    user = UserDB.get_user_by_id(user_id)
-    
-    return user
+
+    try:
+        return _get_authenticated_user(payload)
+    except HTTPException:
+        return None
 
 
 def require_admin(user: dict = Depends(get_current_user)):

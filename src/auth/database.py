@@ -12,6 +12,13 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DB_PATH = os.getenv("AUTH_DB_PATH", str(PROJECT_ROOT / "data" / "auth.db"))
 
 
+def _ensure_column_exists(cursor, table_name: str, column_name: str, column_definition: str) -> None:
+    cursor.execute(f"PRAGMA table_info({table_name})")
+    existing_columns = {row[1] for row in cursor.fetchall()}
+    if column_name not in existing_columns:
+        cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_definition}")
+
+
 def get_db_connection():
     """Get SQLite connection with row factory."""
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
@@ -35,10 +42,13 @@ def init_db():
             full_name TEXT,
             role TEXT NOT NULL DEFAULT 'OPERATOR',
             is_active INTEGER DEFAULT 1,
+            session_version INTEGER NOT NULL DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+
+    _ensure_column_exists(cursor, "users", "session_version", "session_version INTEGER NOT NULL DEFAULT 0")
     
     # Create roles table (reference table)
     cursor.execute("""
@@ -175,6 +185,49 @@ class UserDB:
         conn.close()
         
         return users
+
+    @staticmethod
+    def get_user_session_version(user_id: int) -> Optional[int]:
+        """Get the current session version for a user."""
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT session_version FROM users WHERE id = ?", (user_id,))
+        row = cursor.fetchone()
+        conn.close()
+
+        return int(row["session_version"]) if row else None
+
+    @staticmethod
+    def increment_session_version(user_id: int) -> Optional[int]:
+        """Atomically bump a user's session version and return the new value."""
+        conn = get_db_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("BEGIN IMMEDIATE")
+            cursor.execute(
+                """
+                UPDATE users
+                SET session_version = COALESCE(session_version, 0) + 1,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (user_id,),
+            )
+
+            if cursor.rowcount == 0:
+                conn.rollback()
+                return None
+
+            cursor.execute("SELECT session_version FROM users WHERE id = ?", (user_id,))
+            row = cursor.fetchone()
+            conn.commit()
+            return int(row["session_version"]) if row else None
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
     
     @staticmethod
     def update_user_role(user_id: int, role: str) -> bool:
@@ -313,13 +366,16 @@ class RefreshTokenDB:
     """Database operations for refresh tokens."""
     
     @staticmethod
-    def create_refresh_token(user_id: int, expires_at: datetime) -> str:
+    def create_refresh_token(user_id: int, expires_at: datetime, token: str | None = None) -> str:
         """Create a refresh token."""
-        import secrets
         conn = get_db_connection()
         cursor = conn.cursor()
-        
-        token = secrets.token_urlsafe(32)
+
+        if token is None:
+            import secrets
+
+            token = secrets.token_urlsafe(32)
+
         token_hash = hashlib.sha256(token.encode()).hexdigest()
         
         cursor.execute("""
@@ -365,3 +421,23 @@ class RefreshTokenDB:
         conn.close()
         
         return success
+
+    @staticmethod
+    def revoke_all_refresh_tokens_for_user(user_id: int) -> int:
+        """Revoke every refresh token for a user."""
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            UPDATE refresh_tokens
+            SET is_revoked = 1
+            WHERE user_id = ? AND is_revoked = 0
+            """,
+            (user_id,),
+        )
+        conn.commit()
+        revoked_count = cursor.rowcount
+        conn.close()
+
+        return revoked_count
