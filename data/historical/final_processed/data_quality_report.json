@@ -1,9 +1,17 @@
 {
-  "generated_at_utc": "2026-04-07T14:20:44.378209+00:00",
+  "generated_at_utc": "2026-04-20T16:23:33.792151+00:00",
   "stages": {
     "raw": {
-      "total_rows": 184510,
-      "total_columns": 7,
+      "rows": 184510,
+      "columns": [
+        "timestamp",
+        "load_mw",
+        "temperature",
+        "humidity",
+        "wind_speed",
+        "rainfall",
+        "is_holiday"
+      ],
       "null_counts": {
         "timestamp": 0,
         "load_mw": 0,
@@ -13,81 +21,36 @@
         "rainfall": 3,
         "is_holiday": 0
       },
-      "null_rates": {
-        "timestamp": 0.0,
-        "load_mw": 0.0,
-        "temperature": 1.6259281339764783e-05,
-        "humidity": 1.6259281339764783e-05,
-        "wind_speed": 1.6259281339764783e-05,
-        "rainfall": 1.6259281339764783e-05,
-        "is_holiday": 0.0
-      },
-      "numeric_stats": {
-        "load_mw": {
-          "mean": 3999.526213899879,
-          "median": 3883.0533333333333,
-          "std": 1306.5140809616416,
-          "min": 1317.8833333333332,
-          "max": 8581.576666666668,
-          "q25": 3095.4091666666664,
-          "q75": 4922.221666666666,
-          "null_count": 0
-        },
-        "temperature": {
-          "mean": 24.42584346393362,
-          "median": 25.825,
-          "std": 8.011517297788306,
-          "min": 3.2,
-          "max": 46.0,
-          "q25": 18.4,
-          "q75": 30.05,
-          "null_count": 3
-        },
-        "humidity": {
-          "mean": 61.87589359753289,
-          "median": 65.0,
-          "std": 23.890874382497472,
-          "min": 4.0,
-          "max": 100.0,
-          "q25": 43.75,
-          "q75": 82.0,
-          "null_count": 3
-        },
-        "wind_speed": {
-          "mean": 8.903485640111214,
-          "median": 8.125,
-          "std": 4.5679949180777495,
-          "min": 0.0,
-          "max": 36.1,
-          "q25": 5.725,
-          "q75": 11.2,
-          "null_count": 3
-        },
-        "rainfall": {
-          "mean": 0.09349021988325647,
-          "median": 0.0,
-          "std": 0.6075934294620595,
-          "min": 0.0,
-          "max": 30.4,
-          "q25": 0.0,
-          "q75": 0.0,
-          "null_count": 3
-        },
-        "is_holiday": {
-          "mean": 0.04370494824128773,
-          "median": 0.0,
-          "std": 0.20443838255006128,
-          "min": 0.0,
-          "max": 1.0,
-          "q25": 0.0,
-          "q75": 0.0,
-          "null_count": 0
-        }
-      }
+      "numeric_columns": [
+        "load_mw",
+        "temperature",
+        "humidity",
+        "wind_speed",
+        "rainfall",
+        "is_holiday"
+      ]
     },
-    "processed": {
-      "total_rows": 184510,
-      "total_columns": 20,
+    "featured": {
+      "rows": 184510,
+      "columns": [
+        "timestamp",
+        "load_mw",
+        "temperature",
+        "humidity",
+        "wind_speed",
+        "rainfall",
+        "is_holiday",
+        "hour",
+        "day_of_week",
+        "month",
+        "sin_hour",
+        "cos_hour",
+        "load_lag_4",
+        "load_lag_24",
+        "load_lag_96",
+        "rolling_mean_4",
+        "rolling_mean_24"
+      ],
       "null_counts": {
         "timestamp": 0,
         "load_mw": 0,
@@ -99,235 +62,72 @@
         "hour": 0,
         "day_of_week": 0,
         "month": 0,
-        "day_of_year": 0,
-        "week_of_year": 0,
-        "is_weekend": 0,
         "sin_hour": 0,
         "cos_hour": 0,
         "load_lag_4": 4,
         "load_lag_24": 24,
         "load_lag_96": 96,
-        "rolling_mean_4": 0,
-        "rolling_mean_24": 0
+        "rolling_mean_4": 3,
+        "rolling_mean_24": 23
       },
-      "null_rates": {
-        "timestamp": 0.0,
-        "load_mw": 0.0,
-        "temperature": 1.6259281339764783e-05,
-        "humidity": 1.6259281339764783e-05,
-        "wind_speed": 1.6259281339764783e-05,
-        "rainfall": 1.6259281339764783e-05,
-        "is_holiday": 0.0,
-        "hour": 0.0,
-        "day_of_week": 0.0,
-        "month": 0.0,
-        "day_of_year": 0.0,
-        "week_of_year": 0.0,
-        "is_weekend": 0.0,
-        "sin_hour": 0.0,
-        "cos_hour": 0.0,
-        "load_lag_4": 2.1679041786353044e-05,
-        "load_lag_24": 0.00013007425071811827,
-        "load_lag_96": 0.0005202970028724731,
-        "rolling_mean_4": 0.0,
-        "rolling_mean_24": 0.0
-      },
-      "numeric_stats": {
-        "load_mw": {
-          "mean": 3999.526213899879,
-          "median": 3883.0533333333333,
-          "std": 1306.5140809616416,
-          "min": 1317.8833333333332,
-          "max": 8581.576666666668,
-          "q25": 3095.4091666666664,
-          "q75": 4922.221666666666,
-          "null_count": 0
-        },
-        "temperature": {
-          "mean": 24.42584346393362,
-          "median": 25.825,
-          "std": 8.011517297788306,
-          "min": 3.2,
-          "max": 46.0,
-          "q25": 18.4,
-          "q75": 30.05,
-          "null_count": 3
-        },
-        "humidity": {
-          "mean": 61.87589359753289,
-          "median": 65.0,
-          "std": 23.890874382497472,
-          "min": 4.0,
-          "max": 100.0,
-          "q25": 43.75,
-          "q75": 82.0,
-          "null_count": 3
-        },
-        "wind_speed": {
-          "mean": 8.903485640111214,
-          "median": 8.125,
-          "std": 4.5679949180777495,
-          "min": 0.0,
-          "max": 36.1,
-          "q25": 5.725,
-          "q75": 11.2,
-          "null_count": 3
-        },
-        "rainfall": {
-          "mean": 0.09349021988325647,
-          "median": 0.0,
-          "std": 0.6075934294620595,
-          "min": 0.0,
-          "max": 30.4,
-          "q25": 0.0,
-          "q75": 0.0,
-          "null_count": 3
-        },
-        "is_holiday": {
-          "mean": 0.04370494824128773,
-          "median": 0.0,
-          "std": 0.20443838255006128,
-          "min": 0.0,
-          "max": 1.0,
-          "q25": 0.0,
-          "q75": 0.0,
-          "null_count": 0
-        },
-        "hour": {
-          "mean": 11.500124654490271,
-          "median": 12.0,
-          "std": 6.922139279984694,
-          "min": 0.0,
-          "max": 23.0,
-          "q25": 6.0,
-          "q75": 17.75,
-          "null_count": 0
-        },
-        "day_of_week": {
-          "mean": 3.0015500514877242,
-          "median": 3.0,
-          "std": 2.000923260393806,
-          "min": 0.0,
-          "max": 6.0,
-          "q25": 1.0,
-          "q75": 5.0,
-          "null_count": 0
-        },
-        "month": {
-          "mean": 6.30390764728199,
-          "median": 6.0,
-          "std": 3.501474981223631,
-          "min": 1.0,
-          "max": 12.0,
-          "q25": 3.0,
-          "q75": 9.0,
-          "null_count": 0
-        },
-        "day_of_year": {
-          "mean": 176.37911224323884,
-          "median": 174.0,
-          "std": 107.0375826837652,
-          "min": 1.0,
-          "max": 366.0,
-          "q25": 81.0,
-          "q75": 270.0,
-          "null_count": 0
-        },
-        "week_of_year": {
-          "mean": 25.566299929543113,
-          "median": 25.0,
-          "std": 15.258466407360268,
-          "min": 1.0,
-          "max": 53.0,
-          "q25": 12.0,
-          "q75": 39.0,
-          "null_count": 0
-        },
-        "is_weekend": {
-          "mean": 0.28616335157986017,
-          "median": 0.0,
-          "std": 0.45196791358898386,
-          "min": 0.0,
-          "max": 1.0,
-          "q25": 0.0,
-          "q75": 1.0,
-          "null_count": 0
-        },
-        "sin_hour": {
-          "mean": -7.451629687799002e-18,
-          "median": 1.2246467991473532e-16,
-          "std": 0.7071125297183828,
-          "min": -1.0,
-          "max": 1.0,
-          "q25": -0.7071067811865476,
-          "q75": 0.7071067811865476,
-          "null_count": 0
-        },
-        "cos_hour": {
-          "mean": -1.0839520893231822e-05,
-          "median": -1.8369701987210297e-16,
-          "std": 0.7071048649158015,
-          "min": -1.0,
-          "max": 1.0,
-          "q25": -0.7071067811865478,
-          "q75": 0.7071067811865474,
-          "null_count": 0
-        },
-        "load_lag_4": {
-          "mean": 3999.53494450045,
-          "median": 3883.0966666666664,
-          "std": 1306.526884306938,
-          "min": 1317.8833333333332,
-          "max": 8581.576666666668,
-          "q25": 3095.3866666666668,
-          "q75": 4922.225833333333,
-          "null_count": 4
-        },
-        "load_lag_24": {
-          "mean": 3999.529548312609,
-          "median": 3883.0183333333334,
-          "std": 1306.595802907972,
-          "min": 1317.8833333333332,
-          "max": 8581.576666666668,
-          "q25": 3095.305833333334,
-          "q75": 4922.339166666667,
-          "null_count": 24
-        },
-        "load_lag_96": {
-          "mean": 3999.638775852159,
-          "median": 3883.0966666666664,
-          "std": 1306.8071967872445,
-          "min": 1317.8833333333332,
-          "max": 8581.576666666668,
-          "q25": 3095.1383333333333,
-          "q75": 4922.843333333333,
-          "null_count": 96
-        },
-        "rolling_mean_4": {
-          "mean": 3999.5133304141905,
-          "median": 3882.4029166666664,
-          "std": 1302.991182823676,
-          "min": 1324.5608333333337,
-          "max": 8565.135,
-          "q25": 3096.5564583333326,
-          "q75": 4921.4087500000005,
-          "null_count": 0
-        },
-        "rolling_mean_24": {
-          "mean": 3999.4026541448,
-          "median": 3847.476944444444,
-          "std": 1245.4555668184669,
-          "min": 1444.6231944444444,
-          "max": 8140.9425,
-          "q25": 3084.5213541666667,
-          "q75": 4918.249375,
-          "null_count": 0
-        }
-      }
+      "numeric_columns": [
+        "load_mw",
+        "temperature",
+        "humidity",
+        "wind_speed",
+        "rainfall",
+        "is_holiday",
+        "hour",
+        "day_of_week",
+        "month",
+        "sin_hour",
+        "cos_hour",
+        "load_lag_4",
+        "load_lag_24",
+        "load_lag_96",
+        "rolling_mean_4",
+        "rolling_mean_24"
+      ]
     },
-    "featured": {
-      "total_rows": 184510,
-      "total_columns": 43,
+    "processed": {
+      "rows": 184510,
+      "columns": [
+        "timestamp",
+        "load_mw",
+        "temperature",
+        "humidity",
+        "wind_speed",
+        "rainfall",
+        "is_holiday",
+        "hour",
+        "day_of_week",
+        "month",
+        "sin_hour",
+        "cos_hour",
+        "load_lag_4",
+        "load_lag_24",
+        "load_lag_96",
+        "rolling_mean_4",
+        "rolling_mean_24",
+        "load_mw_was_missing",
+        "temperature_was_missing",
+        "humidity_was_missing",
+        "wind_speed_was_missing",
+        "rainfall_was_missing",
+        "is_holiday_was_missing",
+        "hour_was_missing",
+        "day_of_week_was_missing",
+        "month_was_missing",
+        "sin_hour_was_missing",
+        "cos_hour_was_missing",
+        "load_lag_4_was_missing",
+        "load_lag_24_was_missing",
+        "load_lag_96_was_missing",
+        "rolling_mean_4_was_missing",
+        "rolling_mean_24_was_missing",
+        "time_idx",
+        "group_id"
+      ],
       "null_counts": {
         "timestamp": 0,
         "load_mw": 0,
@@ -339,9 +139,6 @@
         "hour": 0,
         "day_of_week": 0,
         "month": 0,
-        "day_of_year": 0,
-        "week_of_year": 0,
-        "is_weekend": 0,
         "sin_hour": 0,
         "cos_hour": 0,
         "load_lag_4": 0,
@@ -358,9 +155,6 @@
         "hour_was_missing": 0,
         "day_of_week_was_missing": 0,
         "month_was_missing": 0,
-        "day_of_year_was_missing": 0,
-        "week_of_year_was_missing": 0,
-        "is_weekend_was_missing": 0,
         "sin_hour_was_missing": 0,
         "cos_hour_was_missing": 0,
         "load_lag_4_was_missing": 0,
@@ -368,492 +162,59 @@
         "load_lag_96_was_missing": 0,
         "rolling_mean_4_was_missing": 0,
         "rolling_mean_24_was_missing": 0,
-        "load_mw_raw": 0,
-        "load_outlier_detected": 0,
         "time_idx": 0,
         "group_id": 0
       },
-      "null_rates": {
-        "timestamp": 0.0,
-        "load_mw": 0.0,
-        "temperature": 0.0,
-        "humidity": 0.0,
-        "wind_speed": 0.0,
-        "rainfall": 0.0,
-        "is_holiday": 0.0,
-        "hour": 0.0,
-        "day_of_week": 0.0,
-        "month": 0.0,
-        "day_of_year": 0.0,
-        "week_of_year": 0.0,
-        "is_weekend": 0.0,
-        "sin_hour": 0.0,
-        "cos_hour": 0.0,
-        "load_lag_4": 0.0,
-        "load_lag_24": 0.0,
-        "load_lag_96": 0.0,
-        "rolling_mean_4": 0.0,
-        "rolling_mean_24": 0.0,
-        "load_mw_was_missing": 0.0,
-        "temperature_was_missing": 0.0,
-        "humidity_was_missing": 0.0,
-        "wind_speed_was_missing": 0.0,
-        "rainfall_was_missing": 0.0,
-        "is_holiday_was_missing": 0.0,
-        "hour_was_missing": 0.0,
-        "day_of_week_was_missing": 0.0,
-        "month_was_missing": 0.0,
-        "day_of_year_was_missing": 0.0,
-        "week_of_year_was_missing": 0.0,
-        "is_weekend_was_missing": 0.0,
-        "sin_hour_was_missing": 0.0,
-        "cos_hour_was_missing": 0.0,
-        "load_lag_4_was_missing": 0.0,
-        "load_lag_24_was_missing": 0.0,
-        "load_lag_96_was_missing": 0.0,
-        "rolling_mean_4_was_missing": 0.0,
-        "rolling_mean_24_was_missing": 0.0,
-        "load_mw_raw": 0.0,
-        "load_outlier_detected": 0.0,
-        "time_idx": 0.0,
-        "group_id": 0.0
-      },
-      "numeric_stats": {
-        "load_mw": {
-          "mean": 3959.159862057945,
-          "median": 3844.2450000000003,
-          "std": 1269.6048068587113,
-          "min": 1317.8833333333332,
-          "max": 8581.576666666668,
-          "q25": 3079.649166666666,
-          "q75": 4824.953333333333,
-          "null_count": 0
-        },
-        "temperature": {
-          "mean": 24.42583166224053,
-          "median": 25.825,
-          "std": 8.011452701028938,
-          "min": 3.2,
-          "max": 46.0,
-          "q25": 18.4,
-          "q75": 30.05,
-          "null_count": 0
-        },
-        "humidity": {
-          "mean": 61.87558668906834,
-          "median": 65.0,
-          "std": 23.89080139814539,
-          "min": 4.0,
-          "max": 100.0,
-          "q25": 43.75,
-          "q75": 82.0,
-          "null_count": 0
-        },
-        "wind_speed": {
-          "mean": 8.90349696493415,
-          "median": 8.125,
-          "std": 4.567958644953597,
-          "min": 0.0,
-          "max": 36.1,
-          "q25": 5.725,
-          "q75": 11.2,
-          "null_count": 0
-        },
-        "rainfall": {
-          "mean": 0.09348869979946887,
-          "median": 0.0,
-          "std": 0.6075886068460464,
-          "min": 0.0,
-          "max": 30.4,
-          "q25": 0.0,
-          "q75": 0.0,
-          "null_count": 0
-        },
-        "is_holiday": {
-          "mean": 0.04370494824128773,
-          "median": 0.0,
-          "std": 0.20443838255006128,
-          "min": 0.0,
-          "max": 1.0,
-          "q25": 0.0,
-          "q75": 0.0,
-          "null_count": 0
-        },
-        "hour": {
-          "mean": 11.500070456885805,
-          "median": 12.0,
-          "std": 6.922209747201347,
-          "min": 0.0,
-          "max": 23.0,
-          "q25": 6.0,
-          "q75": 17.75,
-          "null_count": 0
-        },
-        "day_of_week": {
-          "mean": 3.0015500514877242,
-          "median": 3.0,
-          "std": 2.000923260393806,
-          "min": 0.0,
-          "max": 6.0,
-          "q25": 1.0,
-          "q75": 5.0,
-          "null_count": 0
-        },
-        "month": {
-          "mean": 6.304265351471465,
-          "median": 6.0,
-          "std": 3.5010863391280855,
-          "min": 1.0,
-          "max": 12.0,
-          "q25": 3.0,
-          "q75": 9.0,
-          "null_count": 0
-        },
-        "day_of_year": {
-          "mean": 176.37911224323884,
-          "median": 174.0,
-          "std": 107.0375826837652,
-          "min": 1.0,
-          "max": 366.0,
-          "q25": 81.0,
-          "q75": 270.0,
-          "null_count": 0
-        },
-        "week_of_year": {
-          "mean": 25.566299929543113,
-          "median": 25.0,
-          "std": 15.258466407360268,
-          "min": 1.0,
-          "max": 53.0,
-          "q25": 12.0,
-          "q75": 39.0,
-          "null_count": 0
-        },
-        "is_weekend": {
-          "mean": 0.28616335157986017,
-          "median": 0.0,
-          "std": 0.45196791358898386,
-          "min": 0.0,
-          "max": 1.0,
-          "q25": 0.0,
-          "q75": 1.0,
-          "null_count": 0
-        },
-        "sin_hour": {
-          "mean": -7.451629687799002e-18,
-          "median": 1.2246467991473532e-16,
-          "std": 0.7071125297183828,
-          "min": -1.0,
-          "max": 1.0,
-          "q25": -0.7071067811865476,
-          "q75": 0.7071067811865476,
-          "null_count": 0
-        },
-        "cos_hour": {
-          "mean": -1.0839520893231822e-05,
-          "median": -1.8369701987210297e-16,
-          "std": 0.7071048649158015,
-          "min": -1.0,
-          "max": 1.0,
-          "q25": -0.7071067811865478,
-          "q75": 0.7071067811865474,
-          "null_count": 0
-        },
-        "load_lag_4": {
-          "mean": 3999.491576481853,
-          "median": 3883.0533333333333,
-          "std": 1306.5459223931327,
-          "min": 1317.8833333333332,
-          "max": 8581.576666666668,
-          "q25": 3095.3341666666665,
-          "q75": 4922.221666666666,
-          "null_count": 0
-        },
-        "load_lag_24": {
-          "mean": 3999.2693409029316,
-          "median": 3882.8066666666664,
-          "std": 1306.709989611838,
-          "min": 1317.8833333333332,
-          "max": 8581.576666666668,
-          "q25": 3094.9558333333334,
-          "q75": 4922.221666666666,
-          "null_count": 0
-        },
-        "load_lag_96": {
-          "mean": 3998.597889382689,
-          "median": 3882.283333333333,
-          "std": 1307.2634761189167,
-          "min": 1317.8833333333332,
-          "max": 8581.576666666668,
-          "q25": 3093.6375,
-          "q75": 4922.221666666666,
-          "null_count": 0
-        },
-        "rolling_mean_4": {
-          "mean": 3999.5133304141905,
-          "median": 3882.4029166666664,
-          "std": 1302.991182823676,
-          "min": 1324.5608333333337,
-          "max": 8565.135,
-          "q25": 3096.5564583333326,
-          "q75": 4921.4087500000005,
-          "null_count": 0
-        },
-        "rolling_mean_24": {
-          "mean": 3999.4026541448,
-          "median": 3847.476944444444,
-          "std": 1245.4555668184669,
-          "min": 1444.6231944444444,
-          "max": 8140.9425,
-          "q25": 3084.5213541666667,
-          "q75": 4918.249375,
-          "null_count": 0
-        },
-        "load_mw_was_missing": {
-          "mean": 0.0,
-          "median": 0.0,
-          "std": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "q25": 0.0,
-          "q75": 0.0,
-          "null_count": 0
-        },
-        "temperature_was_missing": {
-          "mean": 1.6259281339764783e-05,
-          "median": 0.0,
-          "std": 0.004032258064160799,
-          "min": 0.0,
-          "max": 1.0,
-          "q25": 0.0,
-          "q75": 0.0,
-          "null_count": 0
-        },
-        "humidity_was_missing": {
-          "mean": 1.6259281339764783e-05,
-          "median": 0.0,
-          "std": 0.004032258064160799,
-          "min": 0.0,
-          "max": 1.0,
-          "q25": 0.0,
-          "q75": 0.0,
-          "null_count": 0
-        },
-        "wind_speed_was_missing": {
-          "mean": 1.6259281339764783e-05,
-          "median": 0.0,
-          "std": 0.004032258064160799,
-          "min": 0.0,
-          "max": 1.0,
-          "q25": 0.0,
-          "q75": 0.0,
-          "null_count": 0
-        },
-        "rainfall_was_missing": {
-          "mean": 1.6259281339764783e-05,
-          "median": 0.0,
-          "std": 0.004032258064160799,
-          "min": 0.0,
-          "max": 1.0,
-          "q25": 0.0,
-          "q75": 0.0,
-          "null_count": 0
-        },
-        "is_holiday_was_missing": {
-          "mean": 0.0,
-          "median": 0.0,
-          "std": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "q25": 0.0,
-          "q75": 0.0,
-          "null_count": 0
-        },
-        "hour_was_missing": {
-          "mean": 0.0,
-          "median": 0.0,
-          "std": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "q25": 0.0,
-          "q75": 0.0,
-          "null_count": 0
-        },
-        "day_of_week_was_missing": {
-          "mean": 0.0,
-          "median": 0.0,
-          "std": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "q25": 0.0,
-          "q75": 0.0,
-          "null_count": 0
-        },
-        "month_was_missing": {
-          "mean": 0.0,
-          "median": 0.0,
-          "std": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "q25": 0.0,
-          "q75": 0.0,
-          "null_count": 0
-        },
-        "day_of_year_was_missing": {
-          "mean": 0.0,
-          "median": 0.0,
-          "std": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "q25": 0.0,
-          "q75": 0.0,
-          "null_count": 0
-        },
-        "week_of_year_was_missing": {
-          "mean": 0.0,
-          "median": 0.0,
-          "std": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "q25": 0.0,
-          "q75": 0.0,
-          "null_count": 0
-        },
-        "is_weekend_was_missing": {
-          "mean": 0.0,
-          "median": 0.0,
-          "std": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "q25": 0.0,
-          "q75": 0.0,
-          "null_count": 0
-        },
-        "sin_hour_was_missing": {
-          "mean": 0.0,
-          "median": 0.0,
-          "std": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "q25": 0.0,
-          "q75": 0.0,
-          "null_count": 0
-        },
-        "cos_hour_was_missing": {
-          "mean": 0.0,
-          "median": 0.0,
-          "std": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "q25": 0.0,
-          "q75": 0.0,
-          "null_count": 0
-        },
-        "load_lag_4_was_missing": {
-          "mean": 2.1679041786353044e-05,
-          "median": 0.0,
-          "std": 0.0046560379400089795,
-          "min": 0.0,
-          "max": 1.0,
-          "q25": 0.0,
-          "q75": 0.0,
-          "null_count": 0
-        },
-        "load_lag_24_was_missing": {
-          "mean": 0.00013007425071811827,
-          "median": 0.0,
-          "std": 0.011404299026718797,
-          "min": 0.0,
-          "max": 1.0,
-          "q25": 0.0,
-          "q75": 0.0,
-          "null_count": 0
-        },
-        "load_lag_96_was_missing": {
-          "mean": 0.0005202970028724731,
-          "median": 0.0,
-          "std": 0.022804146823209352,
-          "min": 0.0,
-          "max": 1.0,
-          "q25": 0.0,
-          "q75": 0.0,
-          "null_count": 0
-        },
-        "rolling_mean_4_was_missing": {
-          "mean": 0.0,
-          "median": 0.0,
-          "std": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "q25": 0.0,
-          "q75": 0.0,
-          "null_count": 0
-        },
-        "rolling_mean_24_was_missing": {
-          "mean": 0.0,
-          "median": 0.0,
-          "std": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "q25": 0.0,
-          "q75": 0.0,
-          "null_count": 0
-        },
-        "load_mw_raw": {
-          "mean": 3999.526213899879,
-          "median": 3883.0533333333333,
-          "std": 1306.5140809616416,
-          "min": 1317.8833333333332,
-          "max": 8581.576666666668,
-          "q25": 3095.4091666666664,
-          "q75": 4922.221666666666,
-          "null_count": 0
-        },
-        "load_outlier_detected": {
-          "mean": 0.05727602839954474,
-          "median": 0.0,
-          "std": 0.23236991546777108,
-          "min": 0.0,
-          "max": 1.0,
-          "q25": 0.0,
-          "q75": 0.0,
-          "null_count": 0
-        },
-        "time_idx": {
-          "mean": 92254.5,
-          "median": 92254.5,
-          "std": 53263.59342146065,
-          "min": 0.0,
-          "max": 184509.0,
-          "q25": 46127.25,
-          "q75": 138381.75,
-          "null_count": 0
-        },
-        "group_id": {
-          "mean": 0.0,
-          "median": 0.0,
-          "std": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "q25": 0.0,
-          "q75": 0.0,
-          "null_count": 0
-        }
-      }
+      "numeric_columns": [
+        "load_mw",
+        "temperature",
+        "humidity",
+        "wind_speed",
+        "rainfall",
+        "is_holiday",
+        "hour",
+        "day_of_week",
+        "month",
+        "sin_hour",
+        "cos_hour",
+        "load_lag_4",
+        "load_lag_24",
+        "load_lag_96",
+        "rolling_mean_4",
+        "rolling_mean_24",
+        "load_mw_was_missing",
+        "temperature_was_missing",
+        "humidity_was_missing",
+        "wind_speed_was_missing",
+        "rainfall_was_missing",
+        "is_holiday_was_missing",
+        "hour_was_missing",
+        "day_of_week_was_missing",
+        "month_was_missing",
+        "sin_hour_was_missing",
+        "cos_hour_was_missing",
+        "load_lag_4_was_missing",
+        "load_lag_24_was_missing",
+        "load_lag_96_was_missing",
+        "rolling_mean_4_was_missing",
+        "rolling_mean_24_was_missing",
+        "time_idx",
+        "group_id"
+      ]
     }
   },
   "row_flow": {
     "raw_rows": 184510,
-    "processed_rows": 184510,
     "featured_rows": 184510,
-    "dropped_raw_to_processed": 0,
-    "dropped_processed_to_featured": 0
+    "processed_rows": 184510,
+    "dropped_raw_to_featured": 0,
+    "dropped_featured_to_processed": 0
   },
   "preprocess_summary": {
     "rows_input": 184510,
-    "rows_after_preprocessing": 184510,
+    "rows_after_timestamp_cleanup": 184510,
+    "invalid_timestamp_rows": 0,
     "duplicate_rows_removed": 0,
-    "tz_invalid_rows_dropped": 0,
     "missing_counts_before_fill": {
       "load_mw": 0,
       "temperature": 3,
@@ -864,835 +225,13 @@
       "hour": 0,
       "day_of_week": 0,
       "month": 0,
-      "day_of_year": 0,
-      "week_of_year": 0,
-      "is_weekend": 0,
       "sin_hour": 0,
       "cos_hour": 0,
       "load_lag_4": 4,
       "load_lag_24": 24,
       "load_lag_96": 96,
-      "rolling_mean_4": 0,
-      "rolling_mean_24": 0
-    },
-    "quality_checks": {
-      "timezone_normalization": {
-        "invalid_timestamps_dropped": 0,
-        "timezone_enforced": "Asia/Kolkata",
-        "timezone_shift_duplicates_removed": 0,
-        "rows_after_normalization": 184510
-      },
-      "frequency_validation": {
-        "valid_cadence": true,
-        "rows_checked": 184510,
-        "total_deviations": 0,
-        "missing_intervals_count": 0,
-        "outage_spans": [],
-        "deviation_stats": {
-          "min_minutes": 15.0,
-          "max_minutes": 15.0,
-          "mean_minutes": 15.0,
-          "std_minutes": 0.0
-        }
-      },
-      "weather_sanity": {
-        "weather_checks_passed": true,
-        "total_violations": 0,
-        "column_checks": {
-          "temperature": {
-            "column": "temperature",
-            "found": true,
-            "valid_range": "[-15, 60]",
-            "violations": 0,
-            "violation_count": 0,
-            "min_observed": 3.2,
-            "max_observed": 46.0,
-            "null_count": 3
-          },
-          "humidity": {
-            "column": "humidity",
-            "found": true,
-            "valid_range": "[0, 100]",
-            "violations": 0,
-            "violation_count": 0,
-            "min_observed": 4.0,
-            "max_observed": 100.0,
-            "null_count": 3
-          },
-          "wind_speed": {
-            "column": "wind_speed",
-            "found": true,
-            "valid_range": "[0, 100]",
-            "violations": 0,
-            "violation_count": 0,
-            "min_observed": 0.0,
-            "max_observed": 36.1,
-            "null_count": 3
-          },
-          "rainfall": {
-            "column": "rainfall",
-            "found": true,
-            "valid_range": "[0, 1000]",
-            "violations": 0,
-            "violation_count": 0,
-            "min_observed": 0.0,
-            "max_observed": 30.4,
-            "null_count": 3
-          }
-        }
-      },
-      "missing_fill": {
-        "missing_counts_before_fill": {
-          "load_mw": 0,
-          "temperature": 3,
-          "humidity": 3,
-          "wind_speed": 3,
-          "rainfall": 3,
-          "is_holiday": 0,
-          "hour": 0,
-          "day_of_week": 0,
-          "month": 0,
-          "day_of_year": 0,
-          "week_of_year": 0,
-          "is_weekend": 0,
-          "sin_hour": 0,
-          "cos_hour": 0,
-          "load_lag_4": 4,
-          "load_lag_24": 24,
-          "load_lag_96": 96,
-          "rolling_mean_4": 0,
-          "rolling_mean_24": 0
-        },
-        "residual_nulls_after_fill": {
-          "load_mw": 0,
-          "temperature": 0,
-          "humidity": 0,
-          "wind_speed": 0,
-          "rainfall": 0,
-          "is_holiday": 0,
-          "hour": 0,
-          "day_of_week": 0,
-          "month": 0,
-          "day_of_year": 0,
-          "week_of_year": 0,
-          "is_weekend": 0,
-          "sin_hour": 0,
-          "cos_hour": 0,
-          "load_lag_4": 0,
-          "load_lag_24": 0,
-          "load_lag_96": 0,
-          "rolling_mean_4": 0,
-          "rolling_mean_24": 0
-        }
-      },
-      "outlier_treatment": {
-        "outliers_detected": 10568,
-        "outlier_treatment": "clipped_to_iqr_bounds",
-        "iqr_multiplier": 1.5,
-        "outlier_details": [
-          {
-            "timestamp": "2021-01-08 00:00:00",
-            "month_hour": "01-00",
-            "load_mw": 5639.490000000001,
-            "lower_bound": 2524.3749999999977,
-            "upper_bound": 5519.021666666669
-          },
-          {
-            "timestamp": "2021-01-08 00:15:00",
-            "month_hour": "01-00",
-            "load_mw": 5548.37,
-            "lower_bound": 2524.3749999999977,
-            "upper_bound": 5519.021666666669
-          },
-          {
-            "timestamp": "2022-01-10 00:15:00",
-            "month_hour": "01-00",
-            "load_mw": 5547.670000000001,
-            "lower_bound": 2524.3749999999977,
-            "upper_bound": 5519.021666666669
-          },
-          {
-            "timestamp": "2022-01-10 00:30:00",
-            "month_hour": "01-00",
-            "load_mw": 5639.366666666666,
-            "lower_bound": 2524.3749999999977,
-            "upper_bound": 5519.021666666669
-          },
-          {
-            "timestamp": "2022-01-10 00:45:00",
-            "month_hour": "01-00",
-            "load_mw": 5692.05,
-            "lower_bound": 2524.3749999999977,
-            "upper_bound": 5519.021666666669
-          },
-          {
-            "timestamp": "2022-01-13 00:00:00",
-            "month_hour": "01-00",
-            "load_mw": 2039.1057777777776,
-            "lower_bound": 2524.3749999999977,
-            "upper_bound": 5519.021666666669
-          },
-          {
-            "timestamp": "2022-01-13 00:15:00",
-            "month_hour": "01-00",
-            "load_mw": 2040.219,
-            "lower_bound": 2524.3749999999977,
-            "upper_bound": 5519.021666666669
-          },
-          {
-            "timestamp": "2022-01-13 00:30:00",
-            "month_hour": "01-00",
-            "load_mw": 2041.3322222222223,
-            "lower_bound": 2524.3749999999977,
-            "upper_bound": 5519.021666666669
-          },
-          {
-            "timestamp": "2022-01-13 00:45:00",
-            "month_hour": "01-00",
-            "load_mw": 2042.4454444444443,
-            "lower_bound": 2524.3749999999977,
-            "upper_bound": 5519.021666666669
-          },
-          {
-            "timestamp": "2022-01-27 00:00:00",
-            "month_hour": "01-00",
-            "load_mw": 2346.381415929204,
-            "lower_bound": 2524.3749999999977,
-            "upper_bound": 5519.021666666669
-          },
-          {
-            "timestamp": "2022-01-27 00:15:00",
-            "month_hour": "01-00",
-            "load_mw": 2329.325442477876,
-            "lower_bound": 2524.3749999999977,
-            "upper_bound": 5519.021666666669
-          },
-          {
-            "timestamp": "2022-01-27 00:30:00",
-            "month_hour": "01-00",
-            "load_mw": 2312.2694690265484,
-            "lower_bound": 2524.3749999999977,
-            "upper_bound": 5519.021666666669
-          },
-          {
-            "timestamp": "2022-01-27 00:45:00",
-            "month_hour": "01-00",
-            "load_mw": 2295.213495575221,
-            "lower_bound": 2524.3749999999977,
-            "upper_bound": 5519.021666666669
-          },
-          {
-            "timestamp": "2023-01-09 00:00:00",
-            "month_hour": "01-00",
-            "load_mw": 5915.473333333332,
-            "lower_bound": 2524.3749999999977,
-            "upper_bound": 5519.021666666669
-          },
-          {
-            "timestamp": "2023-01-09 00:15:00",
-            "month_hour": "01-00",
-            "load_mw": 5881.086666666667,
-            "lower_bound": 2524.3749999999977,
-            "upper_bound": 5519.021666666669
-          },
-          {
-            "timestamp": "2023-01-09 00:30:00",
-            "month_hour": "01-00",
-            "load_mw": 5873.433333333333,
-            "lower_bound": 2524.3749999999977,
-            "upper_bound": 5519.021666666669
-          },
-          {
-            "timestamp": "2023-01-09 00:45:00",
-            "month_hour": "01-00",
-            "load_mw": 5860.296666666666,
-            "lower_bound": 2524.3749999999977,
-            "upper_bound": 5519.021666666669
-          },
-          {
-            "timestamp": "2023-01-10 00:00:00",
-            "month_hour": "01-00",
-            "load_mw": 5782.6466666666665,
-            "lower_bound": 2524.3749999999977,
-            "upper_bound": 5519.021666666669
-          },
-          {
-            "timestamp": "2023-01-10 00:15:00",
-            "month_hour": "01-00",
-            "load_mw": 5778.066666666667,
-            "lower_bound": 2524.3749999999977,
-            "upper_bound": 5519.021666666669
-          },
-          {
-            "timestamp": "2023-01-10 00:30:00",
-            "month_hour": "01-00",
-            "load_mw": 5820.849999999999,
-            "lower_bound": 2524.3749999999977,
-            "upper_bound": 5519.021666666669
-          },
-          {
-            "timestamp": "2023-01-10 00:45:00",
-            "month_hour": "01-00",
-            "load_mw": 5868.343333333333,
-            "lower_bound": 2524.3749999999977,
-            "upper_bound": 5519.021666666669
-          },
-          {
-            "timestamp": "2024-01-07 00:00:00",
-            "month_hour": "01-00",
-            "load_mw": 5748.536666666667,
-            "lower_bound": 2524.3749999999977,
-            "upper_bound": 5519.021666666669
-          },
-          {
-            "timestamp": "2024-01-07 00:15:00",
-            "month_hour": "01-00",
-            "load_mw": 5719.136666666666,
-            "lower_bound": 2524.3749999999977,
-            "upper_bound": 5519.021666666669
-          },
-          {
-            "timestamp": "2024-01-07 00:30:00",
-            "month_hour": "01-00",
-            "load_mw": 5728.849999999999,
-            "lower_bound": 2524.3749999999977,
-            "upper_bound": 5519.021666666669
-          },
-          {
-            "timestamp": "2024-01-07 00:45:00",
-            "month_hour": "01-00",
-            "load_mw": 5762.44,
-            "lower_bound": 2524.3749999999977,
-            "upper_bound": 5519.021666666669
-          },
-          {
-            "timestamp": "2024-01-08 00:00:00",
-            "month_hour": "01-00",
-            "load_mw": 6059.776666666666,
-            "lower_bound": 2524.3749999999977,
-            "upper_bound": 5519.021666666669
-          },
-          {
-            "timestamp": "2024-01-08 00:15:00",
-            "month_hour": "01-00",
-            "load_mw": 6060.683333333333,
-            "lower_bound": 2524.3749999999977,
-            "upper_bound": 5519.021666666669
-          },
-          {
-            "timestamp": "2024-01-08 00:30:00",
-            "month_hour": "01-00",
-            "load_mw": 6000.889999999999,
-            "lower_bound": 2524.3749999999977,
-            "upper_bound": 5519.021666666669
-          },
-          {
-            "timestamp": "2024-01-08 00:45:00",
-            "month_hour": "01-00",
-            "load_mw": 6028.953333333334,
-            "lower_bound": 2524.3749999999977,
-            "upper_bound": 5519.021666666669
-          },
-          {
-            "timestamp": "2024-01-09 00:00:00",
-            "month_hour": "01-00",
-            "load_mw": 5796.579999999999,
-            "lower_bound": 2524.3749999999977,
-            "upper_bound": 5519.021666666669
-          },
-          {
-            "timestamp": "2024-01-09 00:15:00",
-            "month_hour": "01-00",
-            "load_mw": 5780.68,
-            "lower_bound": 2524.3749999999977,
-            "upper_bound": 5519.021666666669
-          },
-          {
-            "timestamp": "2024-01-09 00:30:00",
-            "month_hour": "01-00",
-            "load_mw": 5757.503333333334,
-            "lower_bound": 2524.3749999999977,
-            "upper_bound": 5519.021666666669
-          },
-          {
-            "timestamp": "2024-01-09 00:45:00",
-            "month_hour": "01-00",
-            "load_mw": 5805.81,
-            "lower_bound": 2524.3749999999977,
-            "upper_bound": 5519.021666666669
-          },
-          {
-            "timestamp": "2024-01-10 00:45:00",
-            "month_hour": "01-00",
-            "load_mw": 5604.64,
-            "lower_bound": 2524.3749999999977,
-            "upper_bound": 5519.021666666669
-          },
-          {
-            "timestamp": "2024-01-11 00:00:00",
-            "month_hour": "01-00",
-            "load_mw": 5677.43,
-            "lower_bound": 2524.3749999999977,
-            "upper_bound": 5519.021666666669
-          },
-          {
-            "timestamp": "2024-01-11 00:15:00",
-            "month_hour": "01-00",
-            "load_mw": 5666.953333333334,
-            "lower_bound": 2524.3749999999977,
-            "upper_bound": 5519.021666666669
-          },
-          {
-            "timestamp": "2024-01-11 00:30:00",
-            "month_hour": "01-00",
-            "load_mw": 5700.263333333333,
-            "lower_bound": 2524.3749999999977,
-            "upper_bound": 5519.021666666669
-          },
-          {
-            "timestamp": "2024-01-11 00:45:00",
-            "month_hour": "01-00",
-            "load_mw": 5674.116666666666,
-            "lower_bound": 2524.3749999999977,
-            "upper_bound": 5519.021666666669
-          },
-          {
-            "timestamp": "2021-01-08 01:00:00",
-            "month_hour": "01-01",
-            "load_mw": 5504.8,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2021-01-08 01:15:00",
-            "month_hour": "01-01",
-            "load_mw": 5597.93,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2021-01-08 01:30:00",
-            "month_hour": "01-01",
-            "load_mw": 5623.533333333333,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2021-01-08 01:45:00",
-            "month_hour": "01-01",
-            "load_mw": 5690.64,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2022-01-10 01:00:00",
-            "month_hour": "01-01",
-            "load_mw": 5722.006666666667,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2022-01-10 01:15:00",
-            "month_hour": "01-01",
-            "load_mw": 5762.933333333333,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2022-01-10 01:30:00",
-            "month_hour": "01-01",
-            "load_mw": 5732.04,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2022-01-10 01:45:00",
-            "month_hour": "01-01",
-            "load_mw": 5766.183333333333,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2022-01-13 01:00:00",
-            "month_hour": "01-01",
-            "load_mw": 2043.5586666666668,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2022-01-13 01:15:00",
-            "month_hour": "01-01",
-            "load_mw": 2044.671888888889,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2022-01-13 01:30:00",
-            "month_hour": "01-01",
-            "load_mw": 2045.7851111111115,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2022-01-13 01:45:00",
-            "month_hour": "01-01",
-            "load_mw": 2046.8983333333333,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2022-01-27 01:00:00",
-            "month_hour": "01-01",
-            "load_mw": 2278.1575221238936,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2022-01-27 01:15:00",
-            "month_hour": "01-01",
-            "load_mw": 2261.1015486725664,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2022-01-27 01:30:00",
-            "month_hour": "01-01",
-            "load_mw": 2244.045575221239,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2022-01-27 01:45:00",
-            "month_hour": "01-01",
-            "load_mw": 2226.989601769911,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2023-01-09 01:00:00",
-            "month_hour": "01-01",
-            "load_mw": 5897.09,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2023-01-09 01:15:00",
-            "month_hour": "01-01",
-            "load_mw": 5947.293333333334,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2023-01-09 01:30:00",
-            "month_hour": "01-01",
-            "load_mw": 5962.639999999999,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2023-01-09 01:45:00",
-            "month_hour": "01-01",
-            "load_mw": 6012.633333333334,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2023-01-10 01:00:00",
-            "month_hour": "01-01",
-            "load_mw": 5905.7,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2023-01-10 01:15:00",
-            "month_hour": "01-01",
-            "load_mw": 5924.733333333334,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2023-01-10 01:30:00",
-            "month_hour": "01-01",
-            "load_mw": 5892.693333333334,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2023-01-10 01:45:00",
-            "month_hour": "01-01",
-            "load_mw": 5926.09,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2024-01-07 01:00:00",
-            "month_hour": "01-01",
-            "load_mw": 5801.079999999999,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2024-01-07 01:15:00",
-            "month_hour": "01-01",
-            "load_mw": 5841.746666666667,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2024-01-07 01:30:00",
-            "month_hour": "01-01",
-            "load_mw": 5850.576666666667,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2024-01-07 01:45:00",
-            "month_hour": "01-01",
-            "load_mw": 5942.52,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2024-01-08 01:00:00",
-            "month_hour": "01-01",
-            "load_mw": 6096.306666666666,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2024-01-08 01:15:00",
-            "month_hour": "01-01",
-            "load_mw": 6204.516666666666,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2024-01-08 01:30:00",
-            "month_hour": "01-01",
-            "load_mw": 6244.156666666667,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2024-01-08 01:45:00",
-            "month_hour": "01-01",
-            "load_mw": 6327.733333333334,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2024-01-09 01:00:00",
-            "month_hour": "01-01",
-            "load_mw": 5782.026666666668,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2024-01-09 01:15:00",
-            "month_hour": "01-01",
-            "load_mw": 5821.443333333334,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2024-01-09 01:30:00",
-            "month_hour": "01-01",
-            "load_mw": 5858.580000000001,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2024-01-09 01:45:00",
-            "month_hour": "01-01",
-            "load_mw": 5864.400000000001,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2024-01-10 01:00:00",
-            "month_hour": "01-01",
-            "load_mw": 5607.91,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2024-01-10 01:15:00",
-            "month_hour": "01-01",
-            "load_mw": 5664.133333333334,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2024-01-10 01:30:00",
-            "month_hour": "01-01",
-            "load_mw": 5757.2,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2024-01-10 01:45:00",
-            "month_hour": "01-01",
-            "load_mw": 5836.009999999999,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2024-01-11 01:00:00",
-            "month_hour": "01-01",
-            "load_mw": 5657.420000000001,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2024-01-11 01:15:00",
-            "month_hour": "01-01",
-            "load_mw": 5639.906666666667,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2024-01-11 01:30:00",
-            "month_hour": "01-01",
-            "load_mw": 5582.933333333333,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2024-01-11 01:45:00",
-            "month_hour": "01-01",
-            "load_mw": 5553.05,
-            "lower_bound": 2340.862500000001,
-            "upper_bound": 5396.8825
-          },
-          {
-            "timestamp": "2021-01-08 02:00:00",
-            "month_hour": "01-02",
-            "load_mw": 5793.193333333334,
-            "lower_bound": 2124.8224999999993,
-            "upper_bound": 5189.369166666666
-          },
-          {
-            "timestamp": "2021-01-08 02:15:00",
-            "month_hour": "01-02",
-            "load_mw": 5911.376666666667,
-            "lower_bound": 2124.8224999999993,
-            "upper_bound": 5189.369166666666
-          },
-          {
-            "timestamp": "2021-01-08 02:30:00",
-            "month_hour": "01-02",
-            "load_mw": 6003.073333333334,
-            "lower_bound": 2124.8224999999993,
-            "upper_bound": 5189.369166666666
-          },
-          {
-            "timestamp": "2021-01-08 02:45:00",
-            "month_hour": "01-02",
-            "load_mw": 6165.543333333334,
-            "lower_bound": 2124.8224999999993,
-            "upper_bound": 5189.369166666666
-          },
-          {
-            "timestamp": "2022-01-10 02:00:00",
-            "month_hour": "01-02",
-            "load_mw": 5766.973333333332,
-            "lower_bound": 2124.8224999999993,
-            "upper_bound": 5189.369166666666
-          },
-          {
-            "timestamp": "2022-01-10 02:15:00",
-            "month_hour": "01-02",
-            "load_mw": 5811.509999999999,
-            "lower_bound": 2124.8224999999993,
-            "upper_bound": 5189.369166666666
-          },
-          {
-            "timestamp": "2022-01-10 02:30:00",
-            "month_hour": "01-02",
-            "load_mw": 5714.9333333333325,
-            "lower_bound": 2124.8224999999993,
-            "upper_bound": 5189.369166666666
-          },
-          {
-            "timestamp": "2022-01-10 02:45:00",
-            "month_hour": "01-02",
-            "load_mw": 5618.356666666666,
-            "lower_bound": 2124.8224999999993,
-            "upper_bound": 5189.369166666666
-          },
-          {
-            "timestamp": "2022-01-13 02:00:00",
-            "month_hour": "01-02",
-            "load_mw": 2048.011555555556,
-            "lower_bound": 2124.8224999999993,
-            "upper_bound": 5189.369166666666
-          },
-          {
-            "timestamp": "2022-01-13 02:15:00",
-            "month_hour": "01-02",
-            "load_mw": 2049.124777777778,
-            "lower_bound": 2124.8224999999993,
-            "upper_bound": 5189.369166666666
-          },
-          {
-            "timestamp": "2022-01-13 02:30:00",
-            "month_hour": "01-02",
-            "load_mw": 2050.2380000000003,
-            "lower_bound": 2124.8224999999993,
-            "upper_bound": 5189.369166666666
-          },
-          {
-            "timestamp": "2022-01-13 02:45:00",
-            "month_hour": "01-02",
-            "load_mw": 2051.3512222222225,
-            "lower_bound": 2124.8224999999993,
-            "upper_bound": 5189.369166666666
-          },
-          {
-            "timestamp": "2023-01-09 02:00:00",
-            "month_hour": "01-02",
-            "load_mw": 6025.2733333333335,
-            "lower_bound": 2124.8224999999993,
-            "upper_bound": 5189.369166666666
-          },
-          {
-            "timestamp": "2023-01-09 02:15:00",
-            "month_hour": "01-02",
-            "load_mw": 6079.566666666667,
-            "lower_bound": 2124.8224999999993,
-            "upper_bound": 5189.369166666666
-          },
-          {
-            "timestamp": "2023-01-09 02:30:00",
-            "month_hour": "01-02",
-            "load_mw": 6083.286666666667,
-            "lower_bound": 2124.8224999999993,
-            "upper_bound": 5189.369166666666
-          },
-          {
-            "timestamp": "2023-01-09 02:45:00",
-            "month_hour": "01-02",
-            "load_mw": 6162.503333333333,
-            "lower_bound": 2124.8224999999993,
-            "upper_bound": 5189.369166666666
-          },
-          {
-            "timestamp": "2023-01-10 02:00:00",
-            "month_hour": "01-02",
-            "load_mw": 5928.786666666667,
-            "lower_bound": 2124.8224999999993,
-            "upper_bound": 5189.369166666666
-          },
-          {
-            "timestamp": "2023-01-10 02:15:00",
-            "month_hour": "01-02",
-            "load_mw": 6003.38,
-            "lower_bound": 2124.8224999999993,
-            "upper_bound": 5189.369166666666
-          }
-        ],
-        "total_outlier_details": 10568
-      }
+      "rolling_mean_4": 3,
+      "rolling_mean_24": 23
     }
   }
 }
