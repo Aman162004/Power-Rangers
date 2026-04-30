@@ -20,7 +20,7 @@ import pandas as pd
 
 import os
 os.makedirs("plots", exist_ok=True)
-df = pd.read_csv("data/historical/raw/demand_load/load_sldc_2021-01-01_to_2026-04-06.csv")
+df = pd.read_csv("data/historical/raw/electricity_demand_2021-01-01_to_2026-04-06.csv")
 df.rename(columns={"load_mw": "load_MW"}, inplace=True)
 
 print(f"Dataset Shape: {df.shape}")
@@ -119,10 +119,7 @@ print(df_cpy.sample(3))
 
 
 
-weather_df = pd.read_csv("data/historical/raw/weather/weather_openmeteo_2021-01-01_to_2026-04-06.csv")
-weather_df["timestamp"] = pd.to_datetime(weather_df["timestamp"])
-weather_df.set_index("timestamp", inplace=True)
-df_cpy = df_cpy.join(weather_df[["temperature", "humidity"]], how="left")
+
 
 
 
