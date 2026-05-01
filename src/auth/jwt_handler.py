@@ -4,7 +4,12 @@ import jwt
 import os
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
-from dotenv import load_dotenv
+
+try:
+    from dotenv import load_dotenv
+except ImportError:  # pragma: no cover - optional local-development dependency
+    def load_dotenv() -> None:
+        return None
 
 load_dotenv()
 
@@ -15,7 +20,11 @@ ACCESS_TOKEN_EXPIRE_HOURS = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_HOURS", "2"))
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("JWT_REFRESH_TOKEN_EXPIRE_DAYS", "7"))
 
 
-def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> tuple[str, datetime]:
+def create_access_token(
+    data: Dict[str, Any],
+    expires_delta: Optional[timedelta] = None,
+    session_version: int = 0,
+) -> tuple[str, datetime]:
     """Create JWT access token."""
     to_encode = data.copy()
     
@@ -24,13 +33,13 @@ def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta]
     else:
         expire = datetime.utcnow() + timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
     
-    to_encode.update({"exp": expire})
+    to_encode.update({"exp": expire, "type": "access", "session_version": session_version})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     
     return encoded_jwt, expire
 
 
-def create_refresh_token(user_id: int) -> str:
+def create_refresh_token(user_id: int, session_version: int = 0) -> str:
     """Create refresh token."""
     expires_delta = timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     expire = datetime.utcnow() + expires_delta
@@ -38,7 +47,8 @@ def create_refresh_token(user_id: int) -> str:
     data = {
         "sub": str(user_id),
         "type": "refresh",
-        "exp": expire
+        "exp": expire,
+        "session_version": session_version,
     }
     
     encoded_jwt = jwt.encode(data, SECRET_KEY, algorithm=ALGORITHM)

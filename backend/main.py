@@ -1,11 +1,13 @@
 import os
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 import warnings
 
 import pandas as pd
+import pytz
 from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 import sys
 from pathlib import Path
@@ -14,11 +16,17 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
-from src.ingestion.load_fetcher import fetch_sldc_load_data
+from src.ingestion.load_fetcher import (
+    ACTUAL_CACHE_FRESHNESS_WINDOW,
+    ACTUAL_CACHE_PREFIX,
+    fetch_sldc_actual_load_data,
+    fetch_sldc_load_data,
+)
 from src.forecast.tft_inference import run_tft_inference
 from src.forecast.fallback_data import load_dummy_forecast_data
 from src.shared.config import ENABLE_DUMMY_FALLBACK
 from src.auth.routes import router as auth_router
+from src.auth.seed_admin import seed_admin
 
 # Suppress TFT inference warnings during operation
 warnings.filterwarnings("ignore", module="pytorch_forecasting")
@@ -26,27 +34,34 @@ warnings.filterwarnings("ignore", module="pytorch_forecasting")
 app = FastAPI(title="Power Rangers Backend API")
 logger = logging.getLogger(__name__)
 
-# Setup CORS for React frontend
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Adjust this in production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+FRONTEND_DIST_DIR = project_root / "frontend" / "dist"
+FRONTEND_INDEX_FILE = FRONTEND_DIST_DIR / "index.html"
+OPERATIONAL_DIR = Path(os.getenv("OPERATIONAL_DIR", "/tmp/power-rangers/operational"))
 
 # Register auth routes
 app.include_router(auth_router)
 
-OPERATIONAL_DIR = project_root / "data" / "operational"
 
-# Ensure operational directory exists
-os.makedirs(OPERATIONAL_DIR, exist_ok=True)
+@app.on_event("startup")
+def _startup() -> None:
+    OPERATIONAL_DIR.mkdir(parents=True, exist_ok=True)
+    seed_admin()
 
 
 @app.get("/api/health")
 def health_check():
     return {"status": "ok"}
+
+
+@app.get("/")
+def serve_root():
+    if FRONTEND_INDEX_FILE.exists():
+        return FileResponse(FRONTEND_INDEX_FILE)
+    return {"status": "ok"}
+
+
+def _get_now_ist() -> datetime:
+    return datetime.now(pytz.timezone("Asia/Kolkata")).replace(tzinfo=None)
 
 
 @app.post("/api/forecast")
@@ -79,6 +94,7 @@ def fetch_and_predict(
         scenario_aggressiveness_pct = float(aggressiveness_pct)
 
     try:
+        now = _get_now_ist()
         # 1. Fetch data
         # If forecast_date is provided, interpret it as the first day of forecast horizon.
         # Use previous day as the historical endpoint so predictions are generated for selected day.
@@ -86,7 +102,7 @@ def fetch_and_predict(
             forecast_target_date = _resolve_anchor_date(forecast_date).date()
             history_end = datetime.combine(forecast_target_date - timedelta(days=1), datetime.min.time())
         else:
-            history_end = datetime.now()
+            history_end = now
             forecast_target_date = None
 
         start_date = history_end - timedelta(days=days_to_fetch)
@@ -94,24 +110,51 @@ def fetch_and_predict(
         start_str = start_date.strftime("%Y-%m-%d")
         end_str = history_end.strftime("%Y-%m-%d")
 
-        load_df = fetch_sldc_load_data(start_str, end_str)
+        should_prefetch_actuals = forecast_target_date is None or forecast_target_date <= now.date()
 
-        if load_df.empty:
-            raise HTTPException(status_code=404, detail="No data fetched from SLDC.")
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            actuals_future = None
+            if should_prefetch_actuals:
+                print(f"[Backend] Prefetching today's actuals in background...")
+                actuals_future = executor.submit(_warm_today_actual_cache)
 
-        # 2. Store in operational folder
-        operational_file = OPERATIONAL_DIR / "recent_load.csv"
-        load_df.to_csv(operational_file, index=False)
+            print(f"[Backend] Fetching input data for forecast: {start_str} to {end_str}")
+            load_df = fetch_sldc_load_data(start_str, end_str)
 
-        # 3. Generate TFT forecast with real model
-        forecast_df = _build_forecast_tft(
-            load_df, 
-            forecast_date=forecast_date if forecast_date else end_str
-        )
-        avg_temperature_c = forecast_df.attrs.get("avg_temperature_c")
+            if load_df.empty:
+                print(f"[Backend] Ingestion failed: No data returned from SLDC.")
+                raise HTTPException(status_code=404, detail="No data fetched from SLDC.")
+            
+            print(f"[Backend] Ingestion successful: {len(load_df)} rows fetched.")
 
-        forecast_df = _apply_aggressiveness(forecast_df, scenario_aggressiveness_pct)
-        forecast_with_actuals = _attach_actuals_for_horizon(forecast_df)
+            # 2. Store in operational folder
+            operational_file = OPERATIONAL_DIR / "recent_load.csv"
+            load_df.to_csv(operational_file, index=False)
+
+            # 3. Generate TFT forecast with real model
+            try:
+                print(f"[Backend] Starting TFT model inference...")
+                forecast_df = _build_forecast_tft(
+                    load_df,
+                    forecast_date=forecast_date if forecast_date else end_str,
+                )
+                print(f"[Backend] Inference successful: {len(forecast_df)} forecast steps generated.")
+            except Exception as e:
+                print(f"[Backend] Inference FAILED: {str(e)}")
+                logger.exception("TFT Inference failed")
+                raise
+
+            avg_temperature_c = forecast_df.attrs.get("avg_temperature_c")
+
+            forecast_df = _apply_aggressiveness(forecast_df, scenario_aggressiveness_pct)
+
+            if actuals_future is not None:
+                try:
+                    actuals_future.result()
+                except Exception:
+                    logger.exception("Background SLDC actual cache warm-up failed")
+
+            forecast_with_actuals = _attach_actuals_for_horizon(forecast_df)
         predictions = [
             {
                 "timestamp": row.timestamp.isoformat(),
@@ -166,6 +209,34 @@ def fetch_and_predict(
         raise HTTPException(status_code=500, detail="Forecast generation failed. Check server logs.") from e
 
 
+@app.get("/{requested_path:path}")
+def serve_spa(requested_path: str):
+    if requested_path == "api" or requested_path.startswith("api/"):
+        raise HTTPException(status_code=404, detail="Not found")
+
+    if requested_path in {"docs", "openapi.json", "redoc"}:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    if not FRONTEND_INDEX_FILE.exists():
+        raise HTTPException(status_code=404, detail="Frontend bundle not built")
+
+    frontend_root = FRONTEND_DIST_DIR.resolve()
+    candidate = (FRONTEND_DIST_DIR / requested_path).resolve()
+
+    try:
+        candidate.relative_to(frontend_root)
+    except ValueError:
+        return FileResponse(FRONTEND_INDEX_FILE)
+
+    if candidate.is_file():
+        return FileResponse(candidate)
+
+    if Path(requested_path).suffix:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    return FileResponse(FRONTEND_INDEX_FILE)
+
+
 def _infer_step_minutes(df: pd.DataFrame) -> int:
     if len(df) < 2:
         return 15
@@ -178,7 +249,7 @@ def _infer_step_minutes(df: pd.DataFrame) -> int:
 
 def _resolve_anchor_date(forecast_date: str | None) -> datetime:
     if not forecast_date:
-        return datetime.now()
+        return _get_now_ist()
 
     try:
         return datetime.strptime(forecast_date, "%Y-%m-%d")
@@ -202,7 +273,8 @@ def _attach_actuals_for_horizon(forecast_df: pd.DataFrame) -> pd.DataFrame:
 
     horizon_start = out["timestamp"].min()
     horizon_end = out["timestamp"].max()
-    today = datetime.now().date()
+    now = _get_now_ist()
+    today = now.date()
 
     if horizon_start.date() > today:
         out["actual_load_mw"] = pd.NA
@@ -210,7 +282,7 @@ def _attach_actuals_for_horizon(forecast_df: pd.DataFrame) -> pd.DataFrame:
 
     actual_start = horizon_start.strftime("%Y-%m-%d")
     actual_end = min(horizon_end.date(), today).strftime("%Y-%m-%d")
-    actual_df = fetch_sldc_load_data(actual_start, actual_end)
+    actual_df = fetch_sldc_actual_load_data(actual_start, actual_end)
 
     if actual_df.empty:
         out["actual_load_mw"] = pd.NA
@@ -230,6 +302,20 @@ def _attach_actuals_for_horizon(forecast_df: pd.DataFrame) -> pd.DataFrame:
         how="left",
     )
     return merged
+
+
+def _warm_today_actual_cache() -> None:
+    now = _get_now_ist()
+    today_str = now.strftime("%Y-%m-%d")
+    try:
+        fetch_sldc_load_data(
+            today_str,
+            today_str,
+            cache_prefix=ACTUAL_CACHE_PREFIX,
+            current_day_freshness_window=ACTUAL_CACHE_FRESHNESS_WINDOW,
+        )
+    except Exception:
+        logger.exception("Failed to warm today's SLDC actual cache")
 
 
 def _build_forecast_tft(load_df: pd.DataFrame, forecast_date: str | None = None) -> pd.DataFrame:

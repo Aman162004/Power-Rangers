@@ -24,7 +24,7 @@ export function FunctionalFooter({ onJump }: FunctionalFooterProps) {
         <div>
           <p className="mb-3 text-sm font-semibold text-slate-200">Resources</p>
           <div className="space-y-2 text-sm text-slate-300">
-            <a href="http://127.0.0.1:8000/docs" target="_blank" rel="noreferrer" className="block hover:text-cyan-300">API Docs</a>
+            <a href="/docs" target="_blank" rel="noreferrer" className="block hover:text-cyan-300">API Docs</a>
             <a href="mailto:ops@powerrangers.local" className="block hover:text-cyan-300">Support</a>
           </div>
         </div>
