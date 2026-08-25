@@ -1,5 +1,5 @@
 {
-  "generated_at_utc": "2026-04-20T16:23:33.792151+00:00",
+  "generated_at_utc": "2026-08-25T12:32:37.557278+00:00",
   "stages": {
     "raw": {
       "rows": 184510,
@@ -48,8 +48,10 @@
         "load_lag_4",
         "load_lag_24",
         "load_lag_96",
+        "load_lag_672",
         "rolling_mean_4",
-        "rolling_mean_24"
+        "rolling_mean_24",
+        "rolling_mean_96"
       ],
       "null_counts": {
         "timestamp": 0,
@@ -67,8 +69,10 @@
         "load_lag_4": 4,
         "load_lag_24": 24,
         "load_lag_96": 96,
+        "load_lag_672": 672,
         "rolling_mean_4": 3,
-        "rolling_mean_24": 23
+        "rolling_mean_24": 23,
+        "rolling_mean_96": 95
       },
       "numeric_columns": [
         "load_mw",
@@ -85,8 +89,10 @@
         "load_lag_4",
         "load_lag_24",
         "load_lag_96",
+        "load_lag_672",
         "rolling_mean_4",
-        "rolling_mean_24"
+        "rolling_mean_24",
+        "rolling_mean_96"
       ]
     },
     "processed": {
@@ -107,8 +113,11 @@
         "load_lag_4",
         "load_lag_24",
         "load_lag_96",
+        "load_lag_672",
         "rolling_mean_4",
         "rolling_mean_24",
+        "rolling_mean_96",
+        "load_mw_was_glitch_corrected",
         "load_mw_was_missing",
         "temperature_was_missing",
         "humidity_was_missing",
@@ -123,8 +132,11 @@
         "load_lag_4_was_missing",
         "load_lag_24_was_missing",
         "load_lag_96_was_missing",
+        "load_lag_672_was_missing",
         "rolling_mean_4_was_missing",
         "rolling_mean_24_was_missing",
+        "rolling_mean_96_was_missing",
+        "load_mw_was_glitch_corrected_was_missing",
         "time_idx",
         "group_id"
       ],
@@ -144,8 +156,11 @@
         "load_lag_4": 0,
         "load_lag_24": 0,
         "load_lag_96": 0,
+        "load_lag_672": 0,
         "rolling_mean_4": 0,
         "rolling_mean_24": 0,
+        "rolling_mean_96": 0,
+        "load_mw_was_glitch_corrected": 0,
         "load_mw_was_missing": 0,
         "temperature_was_missing": 0,
         "humidity_was_missing": 0,
@@ -160,8 +175,11 @@
         "load_lag_4_was_missing": 0,
         "load_lag_24_was_missing": 0,
         "load_lag_96_was_missing": 0,
+        "load_lag_672_was_missing": 0,
         "rolling_mean_4_was_missing": 0,
         "rolling_mean_24_was_missing": 0,
+        "rolling_mean_96_was_missing": 0,
+        "load_mw_was_glitch_corrected_was_missing": 0,
         "time_idx": 0,
         "group_id": 0
       },
@@ -180,8 +198,11 @@
         "load_lag_4",
         "load_lag_24",
         "load_lag_96",
+        "load_lag_672",
         "rolling_mean_4",
         "rolling_mean_24",
+        "rolling_mean_96",
+        "load_mw_was_glitch_corrected",
         "load_mw_was_missing",
         "temperature_was_missing",
         "humidity_was_missing",
@@ -196,8 +217,11 @@
         "load_lag_4_was_missing",
         "load_lag_24_was_missing",
         "load_lag_96_was_missing",
+        "load_lag_672_was_missing",
         "rolling_mean_4_was_missing",
         "rolling_mean_24_was_missing",
+        "rolling_mean_96_was_missing",
+        "load_mw_was_glitch_corrected_was_missing",
         "time_idx",
         "group_id"
       ]
@@ -230,8 +254,20 @@
       "load_lag_4": 4,
       "load_lag_24": 24,
       "load_lag_96": 96,
+      "load_lag_672": 672,
       "rolling_mean_4": 3,
-      "rolling_mean_24": 23
+      "rolling_mean_24": 23,
+      "rolling_mean_96": 95,
+      "load_mw_was_glitch_corrected": 0
+    },
+    "quality_checks": {
+      "outlier_treatment": {
+        "glitches_detected": 5382,
+        "glitches_corrected": 1617,
+        "glitches_at_midnight": 391,
+        "mad_window": 96,
+        "mad_mult": 6.0
+      }
     }
   }
 }
