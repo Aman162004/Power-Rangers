@@ -215,11 +215,20 @@ def _drop_unused_training_columns(df: pd.DataFrame, config: dict) -> pd.DataFram
     drop_cols = config['data'].get('training_drop_columns', [])
     drop_cols = [col for col in drop_cols if col in df.columns]
     
-    # Pattern-based drops (e.g., *_was_missing)
-    drop_pattern = config['data'].get('training_drop_pattern', '')
-    if drop_pattern:
-        pattern_cols = [col for col in df.columns if re.match(drop_pattern, col)]
-        drop_cols.extend(pattern_cols)
+    # Pattern-based drops. Supports both the new plural list
+    # (`training_drop_patterns`) and the legacy singular `training_drop_pattern`
+    # for back-compat with caller configs that haven't migrated yet.
+    # The two patterns in `training_drop_patterns` (`.*_was_missing$` and
+    # `.*_was_glitch_corrected$`) are kept semantically distinct per audit
+    # round 2 — imputed-because-absent vs. corrected-because-implausible.
+    drop_patterns = list(config['data'].get('training_drop_patterns', []) or [])
+    legacy_pattern = config['data'].get('training_drop_pattern', '')
+    if legacy_pattern:
+        drop_patterns.insert(0, legacy_pattern)
+    for drop_pattern in drop_patterns:
+        if drop_pattern:
+            pattern_cols = [col for col in df.columns if re.match(drop_pattern, col)]
+            drop_cols.extend(pattern_cols)
     
     if drop_cols:
         df = df.drop(columns=list(set(drop_cols)), errors='ignore')
@@ -243,6 +252,10 @@ def _validate_required_columns(df: pd.DataFrame, split_name: str) -> None:
         'humidity': 'weather',
         'wind_speed': 'weather',
         'rainfall': 'weather',
+        # Audit round 4 added weekly lag and 24h rolling mean for the new
+        # 192-step encoder. These are derived in feature_engineer.engineer_features.
+        'load_lag_672': 'weekly seasonality lag (7d)',
+        'rolling_mean_96': 'rolling 24h mean (matches encoder length)',
     }
     
     missing = [col for col in required if col not in df.columns]
@@ -482,11 +495,21 @@ def run_training_pipeline(config_path: str = "config/config.yaml", run_id: str =
         print("[CHECKPOINT] Training from scratch")
         ckpt_path = None
     elif ckpt_path is not None:
+        # === Geometry guard (Step 5) ===
+        # Refuse to silently resume into a checkpoint trained under a different
+        # encoder/decoder window or feature set. See
+        # src/training/run_manager.py::validate_checkpoint_geometry. Failing here
+        # is intentional: a resume into incompatible geometry would either crash
+        # later inside the LSTM or, worse, succeed but learn the wrong shape.
+        from src.training.run_manager import validate_checkpoint_geometry
+        validate_checkpoint_geometry(Path(ckpt_path), config)
         print(f"[CHECKPOINT] Resuming from {ckpt_path}")
     elif resume_policy in {'auto', 'require'}:
         # Fallback for explicitly requested run_id.
         last_ckpt = run_manager.get_last_checkpoint()
         if last_ckpt:
+            from src.training.run_manager import validate_checkpoint_geometry
+            validate_checkpoint_geometry(last_ckpt, config)
             ckpt_path = str(last_ckpt)
             print(f"[CHECKPOINT] Resuming from {ckpt_path}")
         elif resume_policy == 'require':

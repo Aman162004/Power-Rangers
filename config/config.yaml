@@ -25,8 +25,40 @@ data:
     train: "train_data.parquet"
     val: "val_data.parquet"
     test: "test_data.parquet"
-  training_split_cutoff: "2025-12-31"
-  
+
+  # === Split boundaries (authoritative: test_start_date) ===
+  # The split is derived BACKWARD from test_start_date:
+  #   val_start  = test_start_date - training_val_days
+  #   train ends < val_start
+  #   val        [val_start, test_start)
+  #   test       [test_start, test_end_date + 23:45]
+  # See src/dataset_builder.py::DatasetBuilder::split_dataframe.
+  test_start_date: "2025-04-07"   # first test timestamp is 2025-04-07 00:00
+  test_end_date: "2026-04-06"     # last test timestamp is 2026-04-06 23:45
+  training_val_days: 45           # val window: 2025-02-21 → 2025-04-06 (4,320 rows)
+  test_expected_rows: 35040       # exactly 365 * 96; loud-fail assertion
+
+  # === Boundary glitch correction (Step 1 of audit plan) ===
+  # Detects + corrects the +3000 MW spikes that appear at the first 00:00
+  # tick of each day in the merged SLDC feed. Threshold is scale-adaptive:
+  # rolling MAD of the per-step load differences over a 24h window, flagged
+  # when |Δload| > mad_mult × rolling_MAD. Tuned by `mad_mult`; default 6.0
+  # catches the +3000 MW / −1500 MW boundary jumps without false-flagging
+  # legitimate load ramps.
+  glitch_correction:
+    mad_window: 96              # 24h rolling window for MAD computation
+    mad_mult: 6.0               # threshold = mad_mult × rolling_MAD
+    min_periods: 24             # 6h minimum data in window to compute MAD
+    interpolate_limit: 2        # max consecutive NaNs to interpolate across
+
+  # === Deprecated ===
+  # `training_split_cutoff` is DEPRECATED. Setting it triggers a
+  # DeprecationWarning in split_dataframe and falls back to the
+  # 50/50-of-remainder logic (≈48-day val/test each instead of the
+  # 365-day holdout). Remove this key from any caller config — set
+  # `test_start_date` instead.
+  # training_split_cutoff: "2025-12-31"   # DEPRECATED, ignored when test_start_date is set
+
   # Features to drop (audit, redundant, or pre-processing artifacts)
   training_drop_columns:
     - "day_of_year"  # redundant with hour, day_of_week, month
@@ -34,7 +66,16 @@ data:
     - "is_weekend"  # derivable from day_of_week
     - "load_mw_raw"  # original before outlier clipping; use clipped version
     - "load_outlier_detected"  # flag only, not a feature
-    # Drop all audit columns: *_was_missing
+  # List of audit-column regex patterns to drop before training.
+  # Parallel patterns kept semantically distinct (per audit round 2):
+  #   `.*_was_missing$`           — imputed because cell was NaN
+  #   `.*_was_glitch_corrected$`  — interpolated because value was implausible
+  # Each can be reported on independently post-training.
+  training_drop_patterns:
+    - ".*_was_missing$"
+    - ".*_was_glitch_corrected$"
+  # Back-compat: legacy single-pattern field is also honored by both call sites
+  # (training_pipeline._drop_audit_columns and run_full_system).
   training_drop_pattern: ".*_was_missing$"
 
 ingestion:
@@ -56,13 +97,16 @@ ingestion:
     manifest: "data/operational/raw/ingestion_manifest_{start_date}_to_{end_date}.json"
 
 pipeline:
-  encoder_window: 96  # 24 hours * 4
+  encoder_window: 192  # 48 hours * 4 — matches decoder_window for a 48h→48h TFT.
+                      # Was 96 (24h); bumped in audit step 4 to capture full
+                      # weekly seasonality (load has a 7-day cycle from
+                      # weekday/weekend) and to align encoder and decoder lengths.
   decoder_window: 192   # 48 hours prediction
   stride: 1
 
 features:
-  lags: [4, 24, 96]  # 1h, 6h, 24h
-  rolling_windows: [4, 24]  # 1h, 6h
+  lags: [4, 24, 96, 672]  # 1h, 6h, 24h, 7d — 672 captures weekly seasonality
+  rolling_windows: [4, 24, 96]  # 1h, 6h, 24h — 96 matches encoder length
 
 model:
   hidden_size: 64

@@ -112,7 +112,11 @@ export function DashboardPage() {
 
     try {
       const response = await fetch(
-        `/api/forecast?days_to_fetch=3&forecast_date=${encodeURIComponent(forecastDate)}&temperature_delta_c=${encodeURIComponent(temperatureDelta.toString())}`,
+        // NOTE: `days_to_fetch` is intentionally NOT sent — the backend's default
+        // (backend/main.py, currently 10) is the single source of truth for the
+        // serving history window. Hardcoding a second value here previously caused
+        // drift (3 vs 7) that silently truncated the encoder's lag context.
+        `/api/forecast?forecast_date=${encodeURIComponent(forecastDate)}&temperature_delta_c=${encodeURIComponent(temperatureDelta.toString())}`,
         { method: "POST" },
       );
       if (!response.ok) {

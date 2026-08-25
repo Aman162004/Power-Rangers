@@ -2,6 +2,7 @@
 
 import os
 import json
+import warnings
 import yaml
 from datetime import datetime, timezone
 from pathlib import Path
@@ -130,3 +131,125 @@ def find_latest_resumable_run(config: Dict[str, Any]) -> Tuple[Optional[str], Op
             return run_dir.name, last_ckpt
 
     return None, None
+
+
+def _read_geometry_snapshot(checkpoint_path: Path, config: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Read the training-time config from the cheapest source available.
+
+    Order:
+      1. `models/config/<run_id>.yaml` — written by `TrainingRunManager.save_config_snapshot`.
+         No torch required.
+      2. The .ckpt file itself via `torch.load(weights_only=False)`. Reads
+         `dataset_parameters` from hparams (pytorch_forecasting layout).
+
+    Returns the geometry-bearing subset, or None if neither source is reachable.
+    """
+    try:
+        run_id = checkpoint_path.parent.name
+        models_root = Path(config['data']['models_root'])
+        models_config_dir_rel = config['data']['models_config_dir'].replace('models/', '').rstrip('/')
+        snapshot_path = models_root / models_config_dir_rel / f'{run_id}.yaml'
+        if snapshot_path.exists():
+            with open(snapshot_path, 'r', encoding='utf-8') as f:
+                snap = yaml.safe_load(f) or {}
+            return {
+                'pipeline': snap.get('pipeline', {}),
+                'features': snap.get('features', {}),
+            }
+    except Exception as exc:
+        warnings.warn(f"validate_checkpoint_geometry: snapshot yaml read failed: {exc}")
+
+    try:
+        import torch
+        ckpt = torch.load(str(checkpoint_path), map_location='cpu', weights_only=False)
+        hp = ckpt.get('hyper_parameters', {}) if isinstance(ckpt, dict) else {}
+        ds_params = hp.get('dataset_parameters', {})
+        if not ds_params:
+            ds_params = ckpt.get('dataset_parameters', {}) if isinstance(ckpt, dict) else {}
+        return {
+            'pipeline': {
+                'encoder_window': ds_params.get('max_encoder_length'),
+                'decoder_window': ds_params.get('max_prediction_length'),
+            },
+            'features': {
+                'lags': [int(c.split('_')[-1]) for c in hp.get('time_varying_unknown_reals', [])
+                         if isinstance(c, str) and c.startswith('load_lag_')],
+                'rolling_windows': [int(c.split('_')[-1]) for c in hp.get('time_varying_unknown_reals', [])
+                                    if isinstance(c, str) and c.startswith('rolling_mean_')],
+            },
+        }
+    except Exception as exc:
+        warnings.warn(f"validate_checkpoint_geometry: torch.load failed: {exc}")
+
+
+def validate_checkpoint_geometry(checkpoint_path, config):
+    """Raise a clear, actionable error if a checkpoint's geometry does not match the active config.
+
+    Compares (in order of severity):
+      1. encoder_window — mismatches produce silent tensor-shape errors inside
+         the LSTM / variable-selection networks during forward pass.
+      2. decoder_window — same.
+      3. lags, rolling_windows — mismatches produce silent column-order /
+         feature-count errors inside TimeSeriesDataSet.from_dataset.
+
+    Designed to be cheap on the happy path: the snapshot yaml is just a file
+    read; only falls back to torch.load on the rare case where the snapshot
+    is missing (which happens for manually-promoted checkpoints like
+    `models/final model/`).
+
+    Called from:
+      - `src/forecast/tft_inference.py::_load_tft_model` (serving path)
+      - `src/training/training_pipeline.py::run_training_pipeline` (resume flow)
+
+    On raise, the caller must NOT proceed.
+    """
+    checkpoint_path = Path(checkpoint_path)
+    if not checkpoint_path.exists():
+        raise FileNotFoundError(f"validate_checkpoint_geometry: checkpoint not found at {checkpoint_path}")
+
+    snapshot = _read_geometry_snapshot(checkpoint_path, config)
+    if snapshot is None:
+        warnings.warn(
+            f"validate_checkpoint_geometry: cannot read geometry from {checkpoint_path} "
+            "(snapshot missing, torch.load failed). Proceeding without geometry check — "
+            "this is dangerous. Restore the snapshot yaml or rebuild the checkpoint.",
+            stacklevel=2,
+        )
+        return
+
+    active_pipeline = config.get('pipeline', {})
+    active_features = config.get('features', {})
+    snap_pipeline = snapshot.get('pipeline', {})
+    snap_features = snapshot.get('features', {})
+
+    expected_enc = active_pipeline.get('encoder_window')
+    actual_enc = snap_pipeline.get('encoder_window')
+    expected_dec = active_pipeline.get('decoder_window')
+    actual_dec = snap_pipeline.get('decoder_window')
+    expected_lags = sorted(active_features.get('lags', []) or [])
+    actual_lags = sorted(snap_features.get('lags', []) or [])
+    expected_roll = sorted(active_features.get('rolling_windows', []) or [])
+    actual_roll = sorted(snap_features.get('rolling_windows', []) or [])
+
+    errors = []
+    if actual_enc is not None and expected_enc is not None and int(actual_enc) != int(expected_enc):
+        errors.append(f"encoder_window: checkpoint={actual_enc}, config={expected_enc}")
+    if actual_dec is not None and expected_dec is not None and int(actual_dec) != int(expected_dec):
+        errors.append(f"decoder_window: checkpoint={actual_dec}, config={expected_dec}")
+    if expected_lags and actual_lags and expected_lags != actual_lags:
+        errors.append(f"lags: checkpoint={actual_lags}, config={expected_lags}")
+    if expected_roll and actual_roll and expected_roll != actual_roll:
+        errors.append(f"rolling_windows: checkpoint={actual_roll}, config={expected_roll}")
+
+    if errors:
+        raise RuntimeError(
+            "\n[validate_checkpoint_geometry] CHECKPOINT GEOMETRY MISMATCH\n"
+            f"  Checkpoint: {checkpoint_path}\n"
+            f"  Active config: encoder_window={expected_enc}, decoder_window={expected_dec}, "
+            f"lags={expected_lags}, rolling_windows={expected_roll}\n"
+            f"  Mismatches:\n    - " + "\n    - ".join(errors) + "\n\n"
+            "  Refusing to load incompatible checkpoint. Either:\n"
+            "    a) retrain under the active config, OR\n"
+            "    b) revert the active config to match this checkpoint, OR\n"
+            "    c) archive this checkpoint under models/_archive/ (see Step 5 notes)."
+        )

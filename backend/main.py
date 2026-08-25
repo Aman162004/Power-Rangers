@@ -66,7 +66,7 @@ def _get_now_ist() -> datetime:
 
 @app.post("/api/forecast")
 def fetch_and_predict(
-    days_to_fetch: int = 7,
+    days_to_fetch: int = 10,
     forecast_date: str | None = None,
     aggressiveness_pct: float = 0.0,
     temperature_delta_c: float | None = None,
@@ -145,6 +145,10 @@ def fetch_and_predict(
                 raise
 
             avg_temperature_c = forecast_df.attrs.get("avg_temperature_c")
+            # Audit round 7: surface whether the model ran on live Open-Meteo
+            # data or on constant fallback features, so a silent weather outage
+            # never contaminates forecast interpretation.
+            weather_source = forecast_df.attrs.get("weather_source", "unknown")
 
             forecast_df = _apply_aggressiveness(forecast_df, scenario_aggressiveness_pct)
 
@@ -196,6 +200,7 @@ def fetch_and_predict(
             "aggressiveness_pct": scenario_aggressiveness_pct,
             "temperature_delta_c": temperature_delta_c,
             "avg_temperature_c": avg_temperature_c,
+            "weather_source": weather_source,
             "message": "Data fetched and forecasts generated successfully.",
         }
 
@@ -334,7 +339,7 @@ def _build_forecast_tft(load_df: pd.DataFrame, forecast_date: str | None = None)
     forecast_df = run_tft_inference(
         config_path=str(config_path),
         checkpoint_path=None,  # Auto-finds latest
-        historical_days=7,
+        historical_days=10,
         forecast_date=forecast_date,
         load_df=load_df,
     )

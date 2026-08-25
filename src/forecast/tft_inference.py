@@ -12,9 +12,12 @@ import numpy as np
 import torch
 import yaml
 import requests
+import logging
 
 from pytorch_forecasting import TemporalFusionTransformer, TimeSeriesDataSet
 from pytorch_forecasting.metrics import QuantileLoss
+
+logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
@@ -107,7 +110,15 @@ def _find_latest_checkpoint(config: dict) -> Path:
 
 
 def _load_tft_model(checkpoint: dict, prediction_dataset: TimeSeriesDataSet, config: dict) -> TemporalFusionTransformer:
-    """Load TFT checkpoint using the shipped prediction dataset metadata."""
+    """Load TFT checkpoint using the shipped prediction dataset metadata.
+
+    NOTE: This function is the SERVING path. Callers should have already
+    invoked `validate_checkpoint_geometry(checkpoint_path, config)` before
+    passing the checkpoint dict here — see run_tft_inference() below.
+    The geometry guard is intentionally not re-run inside _load_tft_model
+    because the checkpoint dict has already been loaded at this point and
+    we only have the state_dict (no path).
+    """
     model = TemporalFusionTransformer.from_dataset(
         prediction_dataset,
         hidden_size=config["model"]["hidden_size"],
@@ -117,7 +128,7 @@ def _load_tft_model(checkpoint: dict, prediction_dataset: TimeSeriesDataSet, con
         output_size=len(config["model"]["quantiles"]),
         loss=QuantileLoss(quantiles=config["model"]["quantiles"]),
     )
-    
+
     model.load_state_dict(checkpoint["state_dict"])
     model.eval()
     return model
@@ -126,7 +137,7 @@ def _load_tft_model(checkpoint: dict, prediction_dataset: TimeSeriesDataSet, con
 def run_tft_inference(
     config_path: str | Path = "config/config.yaml",
     checkpoint_path: str | Path | None = None,
-    historical_days: int = 7,
+    historical_days: int = 10,
     forecast_date: str | None = None,
     load_df: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
@@ -144,7 +155,14 @@ def run_tft_inference(
     
     if not checkpoint_path.exists():
         raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
-    
+
+    # === Geometry guard (Step 5) ===
+    # Refuse to silently resume into a checkpoint trained under a different
+    # encoder/decoder window, lag list, or rolling-window list than the active
+    # config. See src/training/run_manager.py::validate_checkpoint_geometry.
+    from src.training.run_manager import validate_checkpoint_geometry
+    validate_checkpoint_geometry(checkpoint_path, config)
+
     print(f"[TFT] Loading checkpoint from {checkpoint_path.name}")
     
     # Resolve forecast date
@@ -170,6 +188,7 @@ def run_tft_inference(
     forecast_end = hist_end + timedelta(minutes=15 * config.get("pipeline", {}).get("decoder_window", 192))
     forecast_end_str = forecast_end.strftime("%Y-%m-%d")
 
+    weather_source = "openmeteo"
     try:
         weather_df = fetch_openmeteo_weather_data(
             start_str,
@@ -178,8 +197,19 @@ def run_tft_inference(
             longitude=float(cfg_ing.get("longitude", 77.2090)),
             timezone=cfg_ing.get("timezone", "Asia/Kolkata"),
         )
+        if weather_df.empty:
+            weather_source = "fallback"
+            logger.warning(
+                "[TFT] Weather fetch returned empty — falling back to constant weather features. "
+                "Forecast will NOT reflect temperature/humidity/wind/rain drivers."
+            )
     except requests.RequestException as exc:
-        print(f"[TFT] Weather fetch failed, continuing with fallback features: {exc}")
+        weather_source = "fallback"
+        logger.warning(
+            "[TFT] Weather fetch failed (%s) — continuing with fallback constant weather features. "
+            "Forecast will NOT reflect temperature/humidity/wind/rain drivers.",
+            exc,
+        )
         weather_df = pd.DataFrame(columns=["timestamp", "temperature", "humidity", "wind_speed", "rainfall"])
 
     avg_temperature_c = None
@@ -218,35 +248,43 @@ def run_tft_inference(
     ind_holidays = holidays_lib.India(years=range(min_year, max_year + 1))
     df["is_holiday"] = df["timestamp"].dt.date.apply(lambda d: int(d in ind_holidays))
     
-    # Lags and rolling means
+    # Lags and rolling means (driven by config.features.{lags,rolling_windows})
     df = df.sort_values("timestamp").reset_index(drop=True)
-    df["load_lag_4"] = df["load_mw"].shift(4)
-    df["load_lag_24"] = df["load_mw"].shift(24)
-    df["load_lag_96"] = df["load_mw"].shift(96)
-    df["rolling_mean_4"] = df["load_mw"].rolling(4, min_periods=1).mean()
-    df["rolling_mean_24"] = df["load_mw"].rolling(24, min_periods=1).mean()
+    lag_values = config.get("features", {}).get("lags", [4, 24, 96])
+    rolling_values = config.get("features", {}).get("rolling_windows", [4, 24])
+    for lag in lag_values:
+        df[f"load_lag_{lag}"] = df["load_mw"].shift(lag)
+    for win in rolling_values:
+        df[f"rolling_mean_{win}"] = df["load_mw"].rolling(win, min_periods=1).mean()
     df = df.ffill().bfill()
-    
+
     # Create inference frame compatible with the training dataset schema.
     df["time_idx"] = range(len(df))
     df["group_id"] = 0
-    
+
+    lag_cols = [f"load_lag_{lag}" for lag in lag_values]
+    rolling_cols = [f"rolling_mean_{win}" for win in rolling_values]
     cols_required = [
         "time_idx", "group_id", "load_mw",
         "hour", "day_of_week", "month", "sin_hour", "cos_hour",
         "temperature", "humidity", "wind_speed", "rainfall", "is_holiday",
-        "load_lag_4", "load_lag_24", "load_lag_96",
-        "rolling_mean_4", "rolling_mean_24"
+        *lag_cols,
+        *rolling_cols,
     ]
-    
+
     df_inf = df[["timestamp"] + cols_required].copy()
-    
-    # Get encoder window
+
+    # Get encoder / decoder window
     enc_win = config.get("pipeline", {}).get("encoder_window", 24)
     dec_win = config.get("pipeline", {}).get("decoder_window", 192)
-    
-    # Keep at least encoder window plus additional context for stable lag features.
-    history_len = max(enc_win + 96, enc_win)
+
+    # History length must cover (encoder window + longest lag) so every row in
+    # the encoder has a valid lag_X for the full horizon. Audit round 6 fix:
+    # the old formula `max(enc_win + 96, enc_win)` truncated the lag_672 history
+    # (the encoder saw 192 + 96 = 288 rows, but lag_672 needs 672 rows of
+    # context). With encoder_window=192 + max(lag)=672 we need ≥ 864 rows of
+    # history; `historical_days=10` provides 960 rows (96 rows of buffer).
+    history_len = max(enc_win + (max(lag_values) if lag_values else 0), enc_win)
     df_hist = df_inf.iloc[-history_len:].copy()
     
     # Create future rows
@@ -284,11 +322,16 @@ def run_tft_inference(
             "wind_speed": wind_speed,
             "rainfall": rainfall,
             "is_holiday": int(ts.date() in india_holidays),
-            "load_lag_4": df_inf["load_lag_4"].iloc[-4:].mean() if len(df_inf) >= 4 else df_inf["load_mw"].mean(),
-            "load_lag_24": df_inf["load_lag_24"].iloc[-24:].mean() if len(df_inf) >= 24 else df_inf["load_mw"].mean(),
-            "load_lag_96": df_inf["load_lag_96"].iloc[-96:].mean() if len(df_inf) >= 96 else df_inf["load_mw"].mean(),
-            "rolling_mean_4": df_inf["rolling_mean_4"].iloc[-1],
-            "rolling_mean_24": df_inf["rolling_mean_24"].iloc[-1],
+            # Lag proxies — average over the last `lag` rows of each lag column
+            # (same pattern as the pre-audit code; the window scales with each lag).
+            **{f"load_lag_{lag}":
+               df_inf[f"load_lag_{lag}"].iloc[-lag:].mean()
+               if len(df_inf) >= lag else df_inf["load_mw"].mean()
+               for lag in lag_values},
+            # Rolling-mean proxies — use the most recent value (lagged trailing
+            # mean is constant across the decoder window in practice).
+            **{f"rolling_mean_{win}": df_inf[f"rolling_mean_{win}"].iloc[-1]
+               for win in rolling_values},
         })
     
     df_future = pd.DataFrame(future_rows)
@@ -337,5 +380,6 @@ def run_tft_inference(
 
     results = results[["timestamp", "p10", "p50", "p90"]]
     results.attrs["avg_temperature_c"] = avg_temperature_c
+    results.attrs["weather_source"] = weather_source
 
     return results

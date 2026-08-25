@@ -13,7 +13,9 @@ import numpy as np
 import pandas as pd
 import torch
 import lightning.pytorch as pl
-from pytorch_forecasting import TemporalFusionTransformer
+import holidays as holidays_lib
+from datetime import timedelta
+from pytorch_forecasting import TemporalFusionTransformer, TimeSeriesDataSet
 from pytorch_forecasting.metrics import QuantileLoss
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -102,6 +104,269 @@ def _metrics_from_predictions(actual: np.ndarray, p50: np.ndarray) -> dict[str, 
         "MAPE": summary["mape"],
         "SMAPE": summary["smape"],
     }
+
+
+def _load_full_forecast_frame(config: dict[str, Any]) -> pd.DataFrame:
+    """Load the full prepared (train+val+test) frame with feature columns intact.
+
+    The walk-forward backtest needs a single chronological frame with all
+    feature columns so each origin can reuse the actual recorded values for its
+    encoder context exactly as training saw them.
+    """
+    train_df, val_df, test_df = _load_training_splits(config)
+    full_df = pd.concat([train_df, val_df, test_df], ignore_index=True)
+    full_df = _drop_unused_training_columns(full_df, config)
+    full_df["timestamp"] = pd.to_datetime(full_df["timestamp"], errors="coerce")
+    full_df = full_df.dropna(subset=["timestamp"])
+    full_df = full_df.sort_values("timestamp").drop_duplicates(subset=["timestamp"], keep="last")
+    full_df = full_df.reset_index(drop=True)
+    full_df["time_idx"] = np.arange(len(full_df))
+    full_df["group_id"] = 0
+    return full_df
+
+
+def _future_row_proxies(
+    df_inf: pd.DataFrame,
+    lag_values: list[int],
+    rolling_values: list[int],
+) -> dict[str, float]:
+    """Build the serving-faithful lag/rolling proxy values for a future row.
+
+    Mirrors `src/forecast/tft_inference.py::run_tft_inference`: each
+    `load_lag_X` proxy is the mean of the last `X` values of that lag column,
+    and each `rolling_mean_W` proxy is the most recent value. Using the same
+    proxy here keeps the walk-forward backtest honest about how the deployed
+    serving path actually constructs the decoder context.
+    """
+    proxies: dict[str, float] = {}
+    for lag in lag_values:
+        col = f"load_lag_{lag}"
+        if col in df_inf.columns and len(df_inf) >= lag:
+            proxies[col] = float(df_inf[col].iloc[-lag:].mean())
+        else:
+            proxies[col] = float(df_inf["load_mw"].mean())
+    for win in rolling_values:
+        col = f"rolling_mean_{win}"
+        proxies[col] = float(df_inf[col].iloc[-1]) if col in df_inf.columns else 0.0
+    return proxies
+
+
+def _build_backtest_window(
+    df_full: pd.DataFrame,
+    origin_idx: int,
+    history_len: int,
+    horizon: int,
+    lag_values: list[int],
+    rolling_values: list[int],
+) -> pd.DataFrame:
+    """Construct a single predict-ready window ending at `origin_idx + horizon`.
+
+    `df_full` must contain every feature column the model expects. The encoder
+    portion is drawn from recorded history; the decoder portion is built with
+    the same future-row proxies as the serving path.
+    """
+    past = df_full.iloc[origin_idx - history_len: origin_idx].copy()
+    past = past.reset_index(drop=True)
+    last_ts = past["timestamp"].iloc[-1]
+    last_load = float(past["load_mw"].iloc[-1])
+
+    proxies = _future_row_proxies(past, lag_values, rolling_values)
+    india_holidays = holidays_lib.India(
+        years=[last_ts.year, (last_ts + timedelta(minutes=15 * horizon)).year]
+    )
+
+    rows = []
+    for i in range(1, horizon + 1):
+        ts = last_ts + timedelta(minutes=15 * i)
+        rows.append({
+            "timestamp": ts,
+            "load_mw": last_load,
+            "hour": ts.hour,
+            "day_of_week": ts.weekday(),
+            "month": ts.month,
+            "sin_hour": np.sin(2 * np.pi * ts.hour / 24),
+            "cos_hour": np.cos(2 * np.pi * ts.hour / 24),
+            "is_holiday": int(ts.date() in india_holidays),
+            "temperature": float(past["temperature"].iloc[-1]),
+            "humidity": float(past["humidity"].iloc[-1]),
+            "wind_speed": float(past["wind_speed"].iloc[-1]),
+            "rainfall": float(past["rainfall"].iloc[-1]),
+            **proxies,
+        })
+    future = pd.DataFrame(rows)
+
+    window = pd.concat([past, future], ignore_index=True)
+    window["time_idx"] = np.arange(len(window))
+    window["group_id"] = 0
+    return window
+
+
+def walk_forward_backtest(
+    config_path: str = "config/config.yaml",
+    checkpoint_path: str | Path | None = None,
+    stride: int = 96,
+    horizon: int | None = None,
+    progress_every: int = 25,
+) -> pd.DataFrame:
+    """Run a full walk-forward backtest over the entire test window.
+
+    Origins advance by `stride` (1 day) from `data.test_start_date` while a
+    full `horizon` of recorded actuals remains. A 365-day test window with
+    stride=96, horizon=192 yields 364 origins (one 48h forecast per day).
+
+    Predictions mirror the serving construction in
+    `tft_inference.py::run_tft_inference` exactly (encoder = recorded history,
+    decoder = proxy rows). Returns a long-form DataFrame: origin, timestamp,
+    p10, p50, p90, actual_load_mw, error_p50, abs_error_p50, ape_p50.
+    """
+    config = load_config(config_path)
+    _register_safe_globals_for_checkpoint_resume()
+
+    pipeline_cfg = config.get("pipeline", {})
+    enc_win = int(pipeline_cfg.get("encoder_window", 192))
+    horizon = int(horizon if horizon is not None else pipeline_cfg.get("decoder_window", 192))
+    lag_values = list(config.get("features", {}).get("lags", []))
+    rolling_values = list(config.get("features", {}).get("rolling_windows", []))
+    history_len = max(enc_win + (max(lag_values) if lag_values else 0), enc_win)
+
+    data_cfg = config.get("data", {})
+    test_start = pd.Timestamp(data_cfg.get("test_start_date", "2025-04-07"))
+    test_end = pd.Timestamp(data_cfg.get("test_end_date", "2026-04-06")) + pd.Timedelta(hours=23, minutes=45)
+
+    from src.training.run_manager import validate_checkpoint_geometry
+    if checkpoint_path is None:
+        from src.forecast.tft_inference import _find_latest_checkpoint
+        checkpoint_path = _find_latest_checkpoint(config)
+    checkpoint_path = Path(checkpoint_path)
+    if not checkpoint_path.exists():
+        raise FileNotFoundError(f"walk_forward_backtest: checkpoint not found at {checkpoint_path}")
+    validate_checkpoint_geometry(checkpoint_path, config)
+
+    print(f"[BACKTEST] Loading checkpoint {checkpoint_path.name}")
+    checkpoint = _safe_load_checkpoint(checkpoint_path)
+
+    full_df = _load_full_forecast_frame(config)
+    print(f"[BACKTEST] Loaded {len(full_df)} rows of prepared data "
+          f"({full_df['timestamp'].min()} -> {full_df['timestamp'].max()})")
+
+    test_mask = (full_df["timestamp"] >= test_start) & (full_df["timestamp"] <= test_end)
+    test_idx = np.where(test_mask.to_numpy())[0]
+    if len(test_idx) == 0:
+        raise ValueError(
+            f"walk_forward_backtest: no rows in [{test_start}, {test_end}]. "
+            "Check data.test_start_date / test_end_date against the prepared splits."
+        )
+    origin_idx = list(range(int(test_idx[0]), int(test_idx[-1]) - horizon + 1, stride))
+    if not origin_idx:
+        raise ValueError("walk_forward_backtest: no viable origins (test window shorter than horizon).")
+    origins = [full_df["timestamp"].iloc[i] for i in origin_idx]
+    print(f"[BACKTEST] {len(origin_idx)} origins across test window "
+          f"[{origins[0]} -> {origins[-1]}], stride={stride}, horizon={horizon}")
+
+    # Build a training dataset directly (mirrors _build_tft_datasets but only
+    # needs the train split — avoids requiring a non-empty val/test split).
+    from src.training.training_pipeline import _validate_required_columns
+    train_df, _, _ = _load_training_splits(config)
+    train_df = _drop_unused_training_columns(train_df, config)
+    _validate_required_columns(train_df, 'train')
+    lag_cols = [f'load_lag_{lag}' for lag in lag_values]
+    rolling_cols = [f'rolling_mean_{win}' for win in rolling_values]
+    train_dataset = TimeSeriesDataSet(
+        train_df,
+        time_idx='time_idx',
+        target='load_mw',
+        group_ids=['group_id'],
+        min_encoder_length=max(enc_win // 2, 1),
+        max_encoder_length=enc_win,
+        min_prediction_length=1,
+        max_prediction_length=horizon,
+        static_categoricals=[],
+        static_reals=[],
+        time_varying_known_categoricals=[],
+        time_varying_known_reals=['hour', 'day_of_week', 'month', 'sin_hour', 'cos_hour',
+                                  'temperature', 'humidity', 'wind_speed', 'rainfall', 'is_holiday'],
+        time_varying_unknown_categoricals=[],
+        time_varying_unknown_reals=['load_mw'] + lag_cols + rolling_cols,
+        add_relative_time_idx=True,
+        add_target_scales=True,
+        add_encoder_length=True,
+    )
+    model = _build_model(config, train_dataset)
+    model.load_state_dict(checkpoint["state_dict"])
+    model.eval()
+    if torch.cuda.is_available():
+        model = model.to("cuda")
+
+    dataset_parameters = checkpoint.get("dataset_parameters")
+    if not isinstance(dataset_parameters, dict):
+        raise RuntimeError("Checkpoint is missing dataset_parameters required for prediction")
+    feature_cols = [c for c in full_df.columns]
+
+    rows: list[dict[str, Any]] = []
+    for n, (o_idx, origin_ts) in enumerate(zip(origin_idx, origins)):
+        window = _build_backtest_window(
+            full_df, o_idx, history_len, horizon, lag_values, rolling_values
+        )
+        prediction_dataset = TimeSeriesDataSet.from_parameters(
+            dataset_parameters,
+            window[feature_cols],
+            predict=True,
+            stop_randomization=True,
+        )
+        loader = prediction_dataset.to_dataloader(train=False, batch_size=1)
+
+        with torch.no_grad():
+            quantile_pred = model.predict(
+                loader,
+                mode="quantiles",
+                mode_kwargs={"quantiles": config["model"]["quantiles"]},
+                return_x=False,
+                return_y=False,
+                batch_size=1,
+                trainer_kwargs={
+                    "accelerator": "gpu" if torch.cuda.is_available() else "cpu",
+                    "devices": 1,
+                    "logger": False,
+                    "enable_progress_bar": False,
+                    "precision": "32-true",
+                },
+            )
+        pred_np = quantile_pred.detach().cpu().numpy() if torch.is_tensor(quantile_pred) else np.asarray(quantile_pred)
+        if pred_np.ndim == 3:
+            pred_np = np.squeeze(pred_np, axis=0)
+        if pred_np.ndim != 2 or pred_np.shape[0] < horizon:
+            raise RuntimeError(
+                f"[BACKTEST] Unexpected prediction shape {pred_np.shape} at origin {origin_ts}"
+            )
+        p10 = pred_np[:horizon, 0]
+        p50 = pred_np[:horizon, 1] if pred_np.shape[1] > 1 else p10
+        p90 = pred_np[:horizon, 2] if pred_np.shape[1] > 2 else p50
+
+        actual_slice = full_df.iloc[o_idx: o_idx + horizon][["timestamp", "load_mw"]]
+        if len(actual_slice) != horizon:
+            break
+        actual_vals = actual_slice["load_mw"].to_numpy(dtype=float)
+
+        for step_i in range(horizon):
+            act = float(actual_vals[step_i])
+            pred = float(p50[step_i])
+            rows.append({
+                "origin": origin_ts,
+                "timestamp": actual_slice["timestamp"].iloc[step_i],
+                "p10": float(p10[step_i]),
+                "p50": pred,
+                "p90": float(p90[step_i]),
+                "actual_load_mw": act,
+                "error_p50": act - pred,
+                "abs_error_p50": abs(act - pred),
+                "ape_p50": abs(act - pred) / act * 100.0 if act != 0 else np.nan,
+            })
+        if (n + 1) % progress_every == 0 or n + 1 == len(origin_idx):
+            print(f"[BACKTEST] {n + 1}/{len(origin_idx)} origins complete")
+
+    backtest_df = pd.DataFrame(rows)
+    print(f"[BACKTEST] Done — {len(backtest_df)} (origin x step) rows collected.")
+    return backtest_df
 
 
 def run_test_pipeline(

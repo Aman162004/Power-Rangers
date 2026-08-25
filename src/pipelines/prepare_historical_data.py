@@ -137,7 +137,18 @@ def run_pipeline(config_path: str):
                 print(f"  - Total violations: {weather['total_violations']}")
         if 'outlier_treatment' in checks:
             outliers = checks['outlier_treatment']
-            if 'outliers_detected' in outliers:
+            if 'glitches_detected' in outliers:
+                n_corrected = outliers.get('glitches_corrected', outliers.get('glitches_detected', 0))
+                n_midnight = outliers.get('glitches_at_midnight', -1)
+                print(
+                    f"Outlier (boundary-glitch) treatment: {outliers['glitches_detected']} glitches "
+                    f"detected, {n_corrected} corrected via rolling-MAD linear interpolation; "
+                    f"{n_midnight} occurred at 00:00:00 day-boundaries. "
+                    f"(mad_window={outliers.get('mad_window', '?')}, "
+                    f"mad_mult={outliers.get('mad_mult', '?')})"
+                )
+            elif 'outliers_detected' in outliers:
+                # Back-compat: legacy `outliers_detected` schema (pre-Step 1).
                 print(f"Outlier treatment: {outliers['outliers_detected']} outliers detected and clipped")
 
 if __name__ == "__main__":

@@ -52,6 +52,7 @@ def load_config(config_path: str) -> dict:
                 "load_outlier_detected",
             ],
             "training_drop_pattern": ".*_was_missing$",
+            "training_drop_patterns": [".*_was_missing$", ".*_was_glitch_corrected$"],
         }
     }
 
@@ -83,10 +84,19 @@ def run_inference_and_evaluation():
 
         drop_cols = config['data'].get('training_drop_columns', [])
         drop_cols = [col for col in drop_cols if col in test_data.columns]
-        drop_pattern = config['data'].get('training_drop_pattern', '')
-        if drop_pattern:
-            pattern_cols = [col for col in test_data.columns if re.match(drop_pattern, col)]
-            drop_cols.extend(pattern_cols)
+        # Pattern drops: supports both plural list (training_drop_patterns) and
+        # legacy singular (training_drop_pattern) — see training_pipeline.py.
+        drop_patterns = list(config['data'].get('training_drop_patterns', []) or [])
+        legacy_pattern = config['data'].get('training_drop_pattern', '')
+        if legacy_pattern:
+            drop_patterns.insert(0, legacy_pattern)
+        # Backwards-compat: also keep the old `drop_pattern` name for any
+        # downstream code that reaches into this frame.
+        # Loop over every pattern (training_drop_patterns plural + legacy singular).
+        for _p in drop_patterns:
+            if _p:
+                pattern_cols = [col for col in test_data.columns if re.match(_p, col)]
+                drop_cols.extend(pattern_cols)
         if drop_cols:
             test_data = test_data.drop(columns=list(set(drop_cols)), errors='ignore')
 
